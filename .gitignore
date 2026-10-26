@@ -1,0 +1,11 @@
+.env
+.DS_Store
+Thumbs.db
+*.log
+/vendor/
+/node_modules/
+.idea/
+.vscode/
+*.swp
+u454222977_lubaga.sql
+sql/legacy/
