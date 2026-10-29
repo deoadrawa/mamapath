@@ -262,8 +262,8 @@ try {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['user_fullname'] = $user['full_name'];
-                $_SESSION['user_role'] = $user['role'];
-                echo json_encode(['success' => true, 'user' => ['id' => $user['id'], 'username' => $user['username'], 'full_name' => $user['full_name'], 'role' => $user['role']]]);
+                $_SESSION['user_role'] = normalizeUserRole($user['role']);
+                echo json_encode(['success' => true, 'user' => ['id' => $user['id'], 'username' => $user['username'], 'full_name' => $user['full_name'], 'role' => $_SESSION['user_role']]]);
             } else {
                 echo json_encode(['success' => false, 'error' => 'Invalid credentials']);
             }

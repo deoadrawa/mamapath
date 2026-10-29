@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['user_fullname'] = $user['full_name'];
-            $_SESSION['user_role'] = $user['role'];
+            $_SESSION['user_role'] = normalizeUserRole($user['role']);
 
             $updateStmt = $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = :id");
             $updateStmt->execute([':id' => $user['id']]);

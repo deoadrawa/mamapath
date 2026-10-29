@@ -473,7 +473,7 @@ $user_role = $_SESSION['user_role'] ?? '';
                     </div>
                     <div>
                         <div class="user-name"><?php echo htmlspecialchars($user_name); ?></div>
-                        <div class="user-role"><?php echo ucfirst($user_role); ?></div>
+                        <div class="user-role"><?php echo htmlspecialchars(getUserRoleLabel($user_role)); ?></div>
                     </div>
                     <a href="logout.php" class="logout-link" title="Logout">
                         <i class="fas fa-sign-out-alt"></i>

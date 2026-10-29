@@ -8,11 +8,6 @@ SET FOREIGN_KEY_CHECKS = 0;
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+03:00";
 
-CREATE DATABASE IF NOT EXISTS `mama_care`
-  DEFAULT CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-USE `mama_care`;
-
 -- --------------------------------------------------------
 -- Lookup tables
 -- --------------------------------------------------------
@@ -81,12 +76,19 @@ CREATE TABLE `users` (
   `username` varchar(50) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
   `full_name` varchar(150) NOT NULL,
-  `role` enum('admin','doctor','midwife','nurse','receptionist','manager') NOT NULL DEFAULT 'midwife',
+  `role` enum('super_admin','staff_admin','admin','doctor','midwife','nurse','receptionist','manager') NOT NULL DEFAULT 'staff_admin',
+  `job_title` varchar(80) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `email` varchar(150) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `last_login` datetime DEFAULT NULL,
+  `created_by` int(10) UNSIGNED DEFAULT NULL,
+  `updated_by` int(10) UNSIGNED DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `username` (`username`)
+  UNIQUE KEY `username` (`username`),
+  KEY `idx_users_role` (`role`,`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -106,6 +108,7 @@ CREATE TABLE `patients` (
   `parish` varchar(100) DEFAULT NULL,
   `village` varchar(100) DEFAULT NULL,
   `created_by` int(10) UNSIGNED DEFAULT NULL,
+  `updated_by` int(10) UNSIGNED DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
@@ -263,6 +266,7 @@ CREATE TABLE `delivery_records` (
   `postpartum_fp_code` int(11) DEFAULT NULL,
   `postpartum_fp_other` varchar(100) DEFAULT NULL,
   `baby_condition_at_discharge` varchar(10) DEFAULT NULL,
+  `number_of_babies` tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
   `maternal_death` tinyint(1) DEFAULT 0,
   `maternal_death_cause` text DEFAULT NULL,
   `recorded_by` int(10) UNSIGNED DEFAULT NULL,
@@ -319,6 +323,7 @@ CREATE TABLE `postnatal_visits` (
   `baby_referred` tinyint(1) DEFAULT NULL,
   `baby_referral_place` varchar(255) DEFAULT NULL,
   `vitamin_a_given` tinyint(1) DEFAULT NULL,
+  `baby_id` bigint(20) UNSIGNED DEFAULT NULL,
   `recorded_by` int(10) UNSIGNED DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -334,6 +339,63 @@ CREATE TABLE `postnatal_visits` (
   CONSTRAINT `fk_pnc_fp` FOREIGN KEY (`fp_method_code`) REFERENCES `fp_methods` (`code`),
   CONSTRAINT `fk_pnc_muac` FOREIGN KEY (`mother_muac_color`) REFERENCES `muac_colors` (`code`),
   CONSTRAINT `fk_pnc_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `appointment_types` (
+  `code` varchar(20) NOT NULL,
+  `label` varchar(50) NOT NULL,
+  PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `appointments` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `patient_id` bigint(20) UNSIGNED NOT NULL,
+  `pregnancy_episode_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `appointment_type` varchar(20) NOT NULL,
+  `scheduled_date` date NOT NULL,
+  `scheduled_time` time DEFAULT NULL,
+  `status` enum('scheduled','completed','missed','cancelled') NOT NULL DEFAULT 'scheduled',
+  `notes` text DEFAULT NULL,
+  `created_by` int(10) UNSIGNED DEFAULT NULL,
+  `updated_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_appt_date` (`scheduled_date`,`status`),
+  KEY `idx_appt_patient` (`patient_id`),
+  KEY `idx_appt_episode` (`pregnancy_episode_id`),
+  CONSTRAINT `fk_appt_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `fk_appt_episode` FOREIGN KEY (`pregnancy_episode_id`) REFERENCES `pregnancy_episodes` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_appt_type` FOREIGN KEY (`appointment_type`) REFERENCES `appointment_types` (`code`),
+  CONSTRAINT `fk_appt_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_appt_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `babies` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `delivery_record_id` bigint(20) UNSIGNED NOT NULL,
+  `birth_order` tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
+  `baby_sex` enum('M','F') NOT NULL,
+  `baby_weight_kg` decimal(5,2) DEFAULT NULL,
+  `apgar_1min` tinyint(4) DEFAULT NULL,
+  `apgar_5min` tinyint(4) DEFAULT NULL,
+  `apgar_asphyxia` tinyint(1) DEFAULT 0,
+  `resuscitation_code` varchar(5) DEFAULT NULL,
+  `skin_to_skin` tinyint(1) DEFAULT 0,
+  `breastfed_1hr` tinyint(1) DEFAULT 0,
+  `routine_meds_teo` tinyint(1) DEFAULT NULL,
+  `routine_meds_vitk` tinyint(1) DEFAULT NULL,
+  `routine_meds_chlorhexidine` tinyint(1) DEFAULT NULL,
+  `condition_at_discharge` varchar(10) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_delivery_birth_order` (`delivery_record_id`,`birth_order`),
+  KEY `fk_baby_resus` (`resuscitation_code`),
+  KEY `fk_baby_condition` (`condition_at_discharge`),
+  CONSTRAINT `fk_baby_delivery` FOREIGN KEY (`delivery_record_id`) REFERENCES `delivery_records` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_baby_resus` FOREIGN KEY (`resuscitation_code`) REFERENCES `resuscitation_codes` (`code`),
+  CONSTRAINT `fk_baby_condition` FOREIGN KEY (`condition_at_discharge`) REFERENCES `baby_conditions` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `system_logs` (
@@ -352,5 +414,9 @@ CREATE TABLE `system_logs` (
   KEY `idx_created` (`created_at`),
   CONSTRAINT `fk_logs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `postnatal_visits`
+  ADD KEY `fk_pnc_baby` (`baby_id`),
+  ADD CONSTRAINT `fk_pnc_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE SET NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;

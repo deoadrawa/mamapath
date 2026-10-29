@@ -19,8 +19,8 @@ ini_set('display_errors', $appDebug ? '1' : '0');
 ini_set('log_errors', '1');
 
 define('DB_HOST', env('DB_HOST', 'localhost'));
-define('DB_NAME', env('DB_NAME', 'mama_care'));
-define('DB_USER', env('DB_USER', 'root'));
+define('DB_NAME', env('DB_NAME', ''));
+define('DB_USER', env('DB_USER', ''));
 define('DB_PASS', env('DB_PASS', ''));
 
 define('APP_NAME', env('APP_NAME', 'Lubaga Hospital MCH System'));
@@ -29,6 +29,10 @@ define('HOSPITAL_NAME', env('HOSPITAL_NAME', 'Lubaga Hospital'));
 define('HOSPITAL_LOCATION', env('HOSPITAL_LOCATION', 'Kampala, Uganda'));
 define('ITEMS_PER_PAGE', 25);
 define('APP_SHOW_DEMO_LOGINS', filter_var(env('APP_SHOW_DEMO_LOGINS', '0'), FILTER_VALIDATE_BOOLEAN));
+
+if (DB_NAME === '' || DB_USER === '') {
+    die('Database configuration is incomplete. Set DB_NAME and DB_USER in .env.');
+}
 
 try {
     $pdo = new PDO(
@@ -113,6 +117,36 @@ function hashPassword(string $password): string
     return password_hash($password, PASSWORD_DEFAULT);
 }
 
+function normalizeUserRole(?string $role): string
+{
+    $roleMap = [
+        'super_admin' => 'admin',
+    ];
+
+    if ($role === null || $role === '') {
+        return '';
+    }
+
+    return $roleMap[$role] ?? $role;
+}
+
+function getUserRoleLabel(?string $role): string
+{
+    $labels = [
+        'super_admin' => 'Super Admin',
+        'staff_admin' => 'Staff Admin',
+        'admin' => 'Admin',
+        'doctor' => 'Doctor',
+        'midwife' => 'Midwife',
+        'nurse' => 'Nurse',
+        'receptionist' => 'Receptionist',
+        'manager' => 'Manager',
+    ];
+
+    $normalizedRole = normalizeUserRole($role);
+    return $labels[$normalizedRole] ?? ucfirst(str_replace('_', ' ', $normalizedRole));
+}
+
 function verifyLogin(PDO $pdo, string $username, string $password)
 {
     $stmt = $pdo->prepare(
@@ -144,6 +178,7 @@ function verifyLogin(PDO $pdo, string $username, string $password)
         return false;
     }
 
+    $user['role'] = normalizeUserRole($user['role'] ?? null);
     unset($user['password_hash']);
     return $user;
 }
@@ -158,13 +193,15 @@ function requireLogin(): void
 
 function hasRole($roles): bool
 {
+    $sessionRole = normalizeUserRole($_SESSION['user_role'] ?? null);
     if (!isset($_SESSION['user_role'])) {
         return false;
     }
     if (is_array($roles)) {
-        return in_array($_SESSION['user_role'], $roles, true);
+        $normalizedRoles = array_map('normalizeUserRole', $roles);
+        return in_array($sessionRole, $normalizedRoles, true);
     }
-    return $_SESSION['user_role'] === $roles;
+    return $sessionRole === normalizeUserRole($roles);
 }
 
 function requireRole($roles): void
