@@ -7,8 +7,8 @@
 // ============================================
 
 require_once 'config.php';
-require_once 'nav.php';
 requireLogin();
+require_once 'nav.php';
 
 // ============================================
 // STATISTICS TILES

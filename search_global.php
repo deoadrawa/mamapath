@@ -5,8 +5,8 @@
 // ============================================
 
 require_once 'config.php';
-require_once 'nav.php';
 requireLogin();
+require_once 'nav.php';
 
 $query = trim($_GET['q'] ?? '');
 $search_type = $_GET['type'] ?? 'all';

@@ -56,14 +56,6 @@ $user_role = $_SESSION['user_role'] ?? '';
             --teal: #00897b;
             --teal-light: #e0f2f1;
             
-            /* Menu Item Colors */
-            --menu-dashboard: #42a5f5;
-            --menu-patients: #26c6da;
-            --menu-anc: #43a047;
-            --menu-delivery: #fb8c00;
-            --menu-pnc: #8e24aa;
-            --menu-search: #1e88e5;
-            --menu-reports: #00897b;
         }
 
         body.dark {
@@ -194,67 +186,6 @@ $user_role = $_SESSION['user_role'] ?? '';
 
         .nav-item span {
             font-size: 14px;
-        }
-
-        /* Individual Menu Item Colors on Hover/Active */
-        .nav-item[data-menu="dashboard"]:hover,
-        .nav-item[data-menu="dashboard"].active {
-            background: rgba(66, 165, 245, 0.25);
-            color: #90caf9;
-            border-left: 3px solid #42a5f5;
-        }
-
-        .nav-item[data-menu="patients"]:hover,
-        .nav-item[data-menu="patients"].active {
-            background: rgba(38, 198, 218, 0.25);
-            color: #80deea;
-            border-left: 3px solid #26c6da;
-        }
-
-        .nav-item[data-menu="anc"]:hover,
-        .nav-item[data-menu="anc"].active {
-            background: rgba(67, 160, 71, 0.25);
-            color: #a5d6a7;
-            border-left: 3px solid #43a047;
-        }
-
-        .nav-item[data-menu="delivery"]:hover,
-        .nav-item[data-menu="delivery"].active {
-            background: rgba(251, 140, 0, 0.25);
-            color: #ffcc80;
-            border-left: 3px solid #fb8c00;
-        }
-
-        .nav-item[data-menu="pnc"]:hover,
-        .nav-item[data-menu="pnc"].active {
-            background: rgba(142, 36, 170, 0.25);
-            color: #ce93d8;
-            border-left: 3px solid #8e24aa;
-        }
-
-        .nav-item[data-menu="search"]:hover,
-        .nav-item[data-menu="search"].active {
-            background: rgba(30, 136, 229, 0.25);
-            color: #90caf9;
-            border-left: 3px solid #1e88e5;
-        }
-
-        .nav-item[data-menu="reports"]:hover,
-        .nav-item[data-menu="reports"].active {
-            background: rgba(0, 137, 123, 0.25);
-            color: #80cbc4;
-            border-left: 3px solid #00897b;
-        }
-
-        .nav-item[data-menu="appointments"]:hover,
-        .nav-item[data-menu="appointments"].active,
-        .nav-item[data-menu="users"]:hover,
-        .nav-item[data-menu="users"].active,
-        .nav-item[data-menu="audit"]:hover,
-        .nav-item[data-menu="audit"].active {
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            border-left: 3px solid #90caf9;
         }
 
         /* Main Content */
@@ -400,6 +331,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: var(--text-primary);
         }
     </style>
+    <link rel="stylesheet" href="app.css?v=2.2">
 </head>
 <body>
 <div class="app-wrapper">
@@ -416,7 +348,8 @@ $user_role = $_SESSION['user_role'] ?? '';
                 </div>
             </div>
         </div>
-        <div class="nav-menu">
+        <nav class="nav-menu" aria-label="Main navigation">
+            <div class="nav-section-label">Workspace</div>
             <a href="index.php" class="nav-item" data-menu="dashboard" id="menu-dashboard">
                 <i class="fas fa-chart-line"></i>
                 <span>Dashboard</span>
@@ -425,9 +358,10 @@ $user_role = $_SESSION['user_role'] ?? '';
                 <i class="fas fa-users"></i>
                 <span>Patient Registry</span>
             </a>
+            <div class="nav-section-label">Maternal care</div>
             <a href="register_patient.php" class="nav-item" data-menu="anc" id="menu-register">
-                <i class="fas fa-plus-circle"></i>
-                <span>ANC First Visit</span>
+                <i class="fas fa-user-plus"></i>
+                <span>Register / First ANC</span>
             </a>
             <a href="anc_visit.php" class="nav-item" data-menu="anc" id="menu-anc">
                 <i class="fas fa-notes-medical"></i>
@@ -441,35 +375,38 @@ $user_role = $_SESSION['user_role'] ?? '';
                 <i class="fas fa-hand-holding-heart"></i>
                 <span>Postnatal Care</span>
             </a>
-            <a href="search_global.php" class="nav-item" data-menu="search" id="menu-search">
-                <i class="fas fa-search"></i>
-                <span>Global Search</span>
-            </a>
-            <a href="reports.php" class="nav-item" data-menu="reports" id="menu-reports">
-                <i class="fas fa-chart-bar"></i>
-                <span>Reports & Analytics</span>
+            <div class="nav-section-label">Continuity of care</div>
+            <a href="child_followup.php" class="nav-item" data-menu="child" id="menu-child">
+                <i class="fas fa-baby"></i>
+                <span>Child Health</span>
             </a>
             <a href="appointments.php" class="nav-item" data-menu="appointments" id="menu-appointments">
                 <i class="fas fa-calendar-check"></i>
                 <span>Appointments</span>
             </a>
-            <a href="child_followup.php" class="nav-item" data-menu="child" id="menu-child">
-                <i class="fas fa-baby"></i>
-                <span>Child Health</span>
+            <a href="referrals.php" class="nav-item" data-menu="referrals" id="menu-referrals">
+                <i class="fas fa-share-square"></i>
+                <span>Referrals</span>
             </a>
             <a href="screenings.php" class="nav-item" data-menu="screenings" id="menu-screenings">
                 <i class="fas fa-vial"></i>
                 <span>Screening</span>
             </a>
-            <a href="referrals.php" class="nav-item" data-menu="referrals" id="menu-referrals">
-                <i class="fas fa-share-square"></i>
-                <span>Referrals</span>
+            <div class="nav-section-label">Insights & operations</div>
+            <a href="reports.php" class="nav-item" data-menu="reports" id="menu-reports">
+                <i class="fas fa-chart-bar"></i>
+                <span>Reports & Analytics</span>
+            </a>
+            <a href="search_global.php" class="nav-item" data-menu="search" id="menu-search">
+                <i class="fas fa-search"></i>
+                <span>Global Search</span>
             </a>
             <a href="resource_planning.php" class="nav-item" data-menu="resources" id="menu-resources">
                 <i class="fas fa-boxes"></i>
                 <span>Resources & Workforce</span>
             </a>
             <?php if (hasRole('admin')): ?>
+                <div class="nav-section-label">Administration</div>
                 <a href="users.php" class="nav-item" data-menu="users" id="menu-users">
                     <i class="fas fa-user-shield"></i>
                     <span>Staff Accounts</span>
@@ -478,14 +415,18 @@ $user_role = $_SESSION['user_role'] ?? '';
                     <i class="fas fa-clipboard-list"></i>
                     <span>Audit Log</span>
                 </a>
+                <a href="system_check.php" class="nav-item" data-menu="system-check" id="menu-system-check">
+                    <i class="fas fa-stethoscope"></i>
+                    <span>System Check</span>
+                </a>
             <?php endif; ?>
-        </div>
+        </nav>
     </aside>
 
     <!-- Main Content -->
     <main class="main-content">
         <div class="topbar">
-            <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">
+            <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-controls="sidebar" aria-expanded="false" aria-label="Toggle navigation">
                 <i class="fas fa-bars"></i>
             </button>
             <div class="page-title">
@@ -506,6 +447,7 @@ $user_role = $_SESSION['user_role'] ?? '';
                         'resource_planning.php' => 'Resources & Workforce Planning',
                         'users.php' => 'Staff Accounts',
                         'audit_log.php' => 'Audit Log',
+                        'system_check.php' => 'System Check',
                         'report_view.php' => 'Detailed Report Viewer',
                         'patient_profile.php' => 'Patient Journey Timeline'
                     ];
@@ -556,6 +498,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             'resource_planning.php': 'menu-resources',
             'users.php': 'menu-users',
             'audit_log.php': 'menu-audit',
+            'system_check.php': 'menu-system-check',
             'report_view.php': 'menu-reports',
             'patient_profile.php': 'menu-patients'
         };
@@ -606,7 +549,9 @@ $user_role = $_SESSION['user_role'] ?? '';
     
     // Sidebar Toggle for Mobile
     function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('open');
+        const sidebar = document.getElementById('sidebar');
+        const isOpen = sidebar.classList.toggle('open');
+        document.getElementById('menuToggle')?.setAttribute('aria-expanded', String(isOpen));
     }
     
     // Initialize all
