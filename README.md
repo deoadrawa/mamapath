@@ -12,11 +12,14 @@ PHP system for antenatal, maternity, and postnatal care at Lubaga Hospital. It f
 
 1. Copy `.env.example` to `.env`. Set `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASS` to the values supplied by your database host. Keep `.env` private; it is ignored by Git.
 2. Create an empty database using the same name as `DB_NAME`, with `utf8mb4` / `utf8mb4_unicode_ci`.
-3. Generate one SQL file containing the complete schema, required lookup values, and an initial administrator: `php sql/build_install.php "$HOME/mama-care-install.sql"`. The script generates a unique 36-character password, stores only its PHP password hash in the SQL, and prints the password once. Save it securely. The SQL file is written outside the repository and is restricted to the current user.
-4. Create an empty database using the same name as `DB_NAME`, with `utf8mb4` / `utf8mb4_unicode_ci`; select it in phpMyAdmin and import the generated SQL file. The installer does not create or select a hard-coded database and must only be imported into a new, empty database.
-5. Point the web root at this folder and sign in with the generated administrator username/password. Rotate the generated password from **Staff Accounts** after first login.
+3. For a self-contained import including an initial administrator, generate a private bundle with `php sql/build_install.php "$HOME/mama-care-install-private.sql"`. The script generates a unique 36-character password, stores only its PHP password hash in the SQL, and prints the password once. Keep the bundle and password private; the output is outside the repository and restricted to your user.
+4. Alternatively, import the committed `sql/mama-care-install.sql`, which contains the complete schema and required lookup data but no account credentials. After import, create the initial administrator with `php create_admin.php` from an interactive terminal.
+5. In either option, select a new, empty database in phpMyAdmin before importing. The SQL does not create or select a hard-coded database and must not be imported over an existing production database.
+6. Point the web root at this folder and sign in. Change the initial password after first login.
 
 The generated install bundle includes the full schema and lookup data used by maternal care, newborn follow-up, screening, referrals, appointments, reports, audit logging, commodities, and staffing. It contains no sample or patient records. The schema uses InnoDB, foreign keys, unique constraints, and indexes for the system's relationship and date-based queries; it does not add speculative partitioning or synthetic data.
+
+`sql/mama-care-install.sql` is the tracked, credential-free source bundle. Refresh it after schema or lookup changes with `php sql/build_install.php --refresh-source`; review and commit that SQL change with the related schema/seed changes.
 
 To create an administrator directly on a server where the app is already configured, `php create_admin.php` remains available for an empty `users` table.
 
