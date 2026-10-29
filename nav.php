@@ -330,7 +330,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: var(--text-primary);
         }
     </style>
-    <link rel="stylesheet" href="app.css?v=5.1">
+    <link rel="stylesheet" href="app.css?v=5.2">
 </head>
 <body>
 <div class="app-wrapper">
