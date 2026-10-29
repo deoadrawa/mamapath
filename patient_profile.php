@@ -141,7 +141,7 @@ $total_iptp = count($iptp_doses);
 <style>
     /* Profile Header */
     .profile-header {
-        background: linear-gradient(135deg, #0a2b44 0%, #0d3b5e 100%);
+        background: #173c50;
         border-radius: 20px;
         padding: 20px 24px;
         margin-bottom: 20px;

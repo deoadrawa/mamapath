@@ -149,7 +149,7 @@ foreach ($patients as $p) {
     /* ============================================ */
     .filter-bar {
         padding: 20px 24px;
-        background: linear-gradient(135deg, #0a2b44 0%, #0d3b5e 100%);
+        background: #173c50;
         border-bottom: 1px solid rgba(255,255,255,0.1);
         display: flex;
         flex-wrap: wrap;

@@ -30,7 +30,7 @@ $user_role = $_SESSION['user_role'] ?? '';
         :root {
             /* Light Mode Colors */
             --bg-body: #f0f4f8;
-            --sidebar-bg: linear-gradient(180deg, #0a2b44 0%, #0d3b5e 100%);
+            --sidebar-bg: #173c50;
             --topbar-bg: #ffffff;
             --card-bg: #ffffff;
             --text-primary: #1a2a3a;
@@ -60,7 +60,7 @@ $user_role = $_SESSION['user_role'] ?? '';
 
         body.dark {
             --bg-body: #121826;
-            --sidebar-bg: linear-gradient(180deg, #0a1628 0%, #0c1a2e 100%);
+            --sidebar-bg: #102b3b;
             --topbar-bg: #1a2332;
             --card-bg: #1a2332;
             --text-primary: #e2e8f0;
@@ -132,7 +132,7 @@ $user_role = $_SESSION['user_role'] ?? '';
         .logo-icon {
             width: 42px;
             height: 42px;
-            background: linear-gradient(135deg, #42a5f5, #1565c0);
+            background: #1d7f91;
             border-radius: 14px;
             display: flex;
             align-items: center;
@@ -211,7 +211,7 @@ $user_role = $_SESSION['user_role'] ?? '';
         .page-title {
             font-size: 20px;
             font-weight: 700;
-            background: linear-gradient(135deg, #1e88e5, #00acc1);
+            background: none;
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
@@ -264,7 +264,7 @@ $user_role = $_SESSION['user_role'] ?? '';
         .user-avatar {
             width: 34px;
             height: 34px;
-            background: linear-gradient(135deg, #1e88e5, #1565c0);
+            background: #19768c;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -331,7 +331,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: var(--text-primary);
         }
     </style>
-    <link rel="stylesheet" href="app.css?v=3.0">
+    <link rel="stylesheet" href="app.css?v=4.0">
 </head>
 <body>
 <div class="app-wrapper">

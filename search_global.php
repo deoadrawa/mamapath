@@ -317,7 +317,7 @@ if (!function_exists('formatDateTime')) {
     }
     
     .search-header {
-        background: linear-gradient(135deg, #0a2b44 0%, #0d3b5e 100%);
+        background: #173c50;
         padding: 20px 24px;
         color: white;
         border-radius: 12px 12px 0 0;

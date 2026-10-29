@@ -175,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 11px;
         }
     </style>
-    <link rel="stylesheet" href="app.css?v=3.0">
+    <link rel="stylesheet" href="app.css?v=4.0">
 </head>
 <body class="login-page">
     <div class="login-container">
