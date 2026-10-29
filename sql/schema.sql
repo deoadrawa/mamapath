@@ -76,7 +76,7 @@ CREATE TABLE `users` (
   `username` varchar(50) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
   `full_name` varchar(150) NOT NULL,
-  `role` enum('super_admin','staff_admin','admin','doctor','midwife','nurse','receptionist','manager') NOT NULL DEFAULT 'staff_admin',
+  `role` enum('super_admin','staff_admin','admin','doctor','midwife','nurse','receptionist','manager','community_health_worker') NOT NULL DEFAULT 'staff_admin',
   `job_title` varchar(80) DEFAULT NULL,
   `phone` varchar(20) DEFAULT NULL,
   `email` varchar(150) DEFAULT NULL,
@@ -351,6 +351,7 @@ CREATE TABLE `appointments` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `patient_id` bigint(20) UNSIGNED NOT NULL,
   `pregnancy_episode_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `baby_id` bigint(20) UNSIGNED DEFAULT NULL,
   `appointment_type` varchar(20) NOT NULL,
   `scheduled_date` date NOT NULL,
   `scheduled_time` time DEFAULT NULL,
@@ -364,6 +365,7 @@ CREATE TABLE `appointments` (
   KEY `idx_appt_date` (`scheduled_date`,`status`),
   KEY `idx_appt_patient` (`patient_id`),
   KEY `idx_appt_episode` (`pregnancy_episode_id`),
+  KEY `idx_appt_baby` (`baby_id`),
   CONSTRAINT `fk_appt_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
   CONSTRAINT `fk_appt_episode` FOREIGN KEY (`pregnancy_episode_id`) REFERENCES `pregnancy_episodes` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_appt_type` FOREIGN KEY (`appointment_type`) REFERENCES `appointment_types` (`code`),
@@ -396,6 +398,162 @@ CREATE TABLE `babies` (
   CONSTRAINT `fk_baby_delivery` FOREIGN KEY (`delivery_record_id`) REFERENCES `delivery_records` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_baby_resus` FOREIGN KEY (`resuscitation_code`) REFERENCES `resuscitation_codes` (`code`),
   CONSTRAINT `fk_baby_condition` FOREIGN KEY (`condition_at_discharge`) REFERENCES `baby_conditions` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `appointments`
+  ADD CONSTRAINT `fk_appt_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE SET NULL;
+
+CREATE TABLE `screening_catalog` (
+  `code` varchar(30) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `population` enum('maternal','newborn','any') NOT NULL DEFAULT 'maternal',
+  `value_kind` enum('numeric','categorical','text') NOT NULL DEFAULT 'categorical',
+  `default_unit` varchar(30) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `screening_results` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `patient_id` bigint(20) UNSIGNED NOT NULL,
+  `pregnancy_episode_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `baby_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `screening_code` varchar(30) NOT NULL,
+  `performed_at` date NOT NULL,
+  `result_status` enum('pending','normal','abnormal','positive','negative','inconclusive') NOT NULL,
+  `method` varchar(100) DEFAULT NULL,
+  `numeric_value` decimal(10,3) DEFAULT NULL,
+  `value_unit` varchar(30) DEFAULT NULL,
+  `result_text` varchar(255) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_screening_patient_date` (`patient_id`,`performed_at`),
+  KEY `idx_screening_episode` (`pregnancy_episode_id`),
+  KEY `idx_screening_baby` (`baby_id`),
+  KEY `idx_screening_code_date` (`screening_code`,`performed_at`),
+  CONSTRAINT `fk_screening_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `fk_screening_episode` FOREIGN KEY (`pregnancy_episode_id`) REFERENCES `pregnancy_episodes` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_screening_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_screening_catalog` FOREIGN KEY (`screening_code`) REFERENCES `screening_catalog` (`code`),
+  CONSTRAINT `fk_screening_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `referrals` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `patient_id` bigint(20) UNSIGNED NOT NULL,
+  `pregnancy_episode_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `baby_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `screening_result_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `referral_date` date NOT NULL,
+  `reason_category` enum('danger_sign','abnormal_screening','specialist_review','emergency','community_followup','other') NOT NULL,
+  `reason` varchar(255) NOT NULL,
+  `urgency` enum('routine','urgent','emergency') NOT NULL DEFAULT 'routine',
+  `destination` varchar(150) NOT NULL,
+  `status` enum('initiated','accepted','completed','not_completed','declined') NOT NULL DEFAULT 'initiated',
+  `followup_date` date DEFAULT NULL,
+  `completed_date` date DEFAULT NULL,
+  `outcome_notes` text DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_referral_status_date` (`status`,`referral_date`),
+  KEY `idx_referral_patient` (`patient_id`,`referral_date`),
+  KEY `idx_referral_episode` (`pregnancy_episode_id`),
+  KEY `idx_referral_baby` (`baby_id`),
+  KEY `idx_referral_screening` (`screening_result_id`),
+  KEY `idx_referral_followup` (`followup_date`,`status`),
+  CONSTRAINT `fk_referral_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `fk_referral_episode` FOREIGN KEY (`pregnancy_episode_id`) REFERENCES `pregnancy_episodes` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_referral_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_referral_screening` FOREIGN KEY (`screening_result_id`) REFERENCES `screening_results` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_referral_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `child_health_visits` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `baby_id` bigint(20) UNSIGNED NOT NULL,
+  `visit_date` date NOT NULL,
+  `weight_kg` decimal(5,2) DEFAULT NULL,
+  `length_cm` decimal(5,2) DEFAULT NULL,
+  `head_circumference_cm` decimal(5,2) DEFAULT NULL,
+  `feeding_status` varchar(100) DEFAULT NULL,
+  `developmental_concerns` text DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_child_visit_baby_date` (`baby_id`,`visit_date`),
+  CONSTRAINT `fk_child_visit_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_child_visit_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `child_immunizations` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `baby_id` bigint(20) UNSIGNED NOT NULL,
+  `child_health_visit_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `vaccine_name` varchar(120) NOT NULL,
+  `dose_label` varchar(50) DEFAULT NULL,
+  `event_date` date NOT NULL,
+  `status` enum('given','not_given','missed','deferred','unknown') NOT NULL,
+  `lot_number` varchar(100) DEFAULT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_child_immunization_baby_date` (`baby_id`,`event_date`),
+  KEY `idx_child_immunization_visit` (`child_health_visit_id`),
+  CONSTRAINT `fk_child_immunization_baby` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_child_immunization_visit` FOREIGN KEY (`child_health_visit_id`) REFERENCES `child_health_visits` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_child_immunization_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `commodities` (
+  `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `code` varchar(30) NOT NULL,
+  `name` varchar(120) NOT NULL,
+  `unit` varchar(30) NOT NULL,
+  `reorder_level` decimal(12,2) NOT NULL DEFAULT 0,
+  `lead_time_days` smallint(5) UNSIGNED NOT NULL DEFAULT 0,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_commodity_code` (`code`),
+  KEY `idx_commodity_active` (`is_active`,`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `commodity_transactions` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `commodity_id` int(10) UNSIGNED NOT NULL,
+  `transaction_date` date NOT NULL,
+  `transaction_type` enum('receipt','issue','adjustment') NOT NULL,
+  `quantity_delta` decimal(12,2) NOT NULL,
+  `reference` varchar(100) DEFAULT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_commodity_tx_date` (`commodity_id`,`transaction_date`),
+  CONSTRAINT `fk_commodity_tx_item` FOREIGN KEY (`commodity_id`) REFERENCES `commodities` (`id`),
+  CONSTRAINT `fk_commodity_tx_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `staffing_records` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `month_start` date NOT NULL,
+  `cadre` varchar(80) NOT NULL,
+  `planned_fte` decimal(6,2) NOT NULL DEFAULT 0,
+  `available_fte` decimal(6,2) NOT NULL DEFAULT 0,
+  `available_hours` decimal(8,2) DEFAULT NULL,
+  `source` varchar(150) DEFAULT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `recorded_by` int(10) UNSIGNED DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_staffing_period_cadre` (`month_start`,`cadre`),
+  CONSTRAINT `fk_staffing_user` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `system_logs` (

@@ -15,7 +15,7 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
-    $password = trim($_POST['password'] ?? '');
+    $password = $_POST['password'] ?? '';
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid or expired form token. Please try again.';
@@ -29,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['username'] = $user['username'];
             $_SESSION['user_fullname'] = $user['full_name'];
             $_SESSION['user_role'] = normalizeUserRole($user['role']);
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
             $updateStmt = $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = :id");
             $updateStmt->execute([':id' => $user['id']]);

@@ -12,6 +12,42 @@ requireLogin();
 $error = '';
 $success = '';
 $patient_id = null;
+$today = date('Y-m-d');
+$selected_patient = null;
+$selected_patient_has_active_episode = false;
+$requestedPatientId = $_GET['patient_id'] ?? $_POST['existing_patient_id'] ?? null;
+$selected_patient_id = $requestedPatientId === null || $requestedPatientId === ''
+    ? null
+    : filter_var($requestedPatientId, FILTER_VALIDATE_INT);
+if ($selected_patient_id === false) {
+    http_response_code(400);
+    exit('Invalid patient selection.');
+}
+if ($selected_patient_id !== false && $selected_patient_id !== null && $selected_patient_id > 0) {
+    $patientStmt = $pdo->prepare(
+        "SELECT p.*,
+                (SELECT COUNT(*) FROM pregnancy_episodes pe WHERE pe.patient_id = p.id) AS episode_count,
+                (SELECT MAX(COALESCE(dr.delivery_datetime, pe.closed_date))
+                 FROM pregnancy_episodes pe
+                 LEFT JOIN delivery_records dr ON dr.pregnancy_episode_id = pe.id
+                 WHERE pe.patient_id = p.id) AS last_pregnancy_end
+         FROM patients p
+         WHERE p.id = :id"
+    );
+    $patientStmt->execute([':id' => $selected_patient_id]);
+    $selected_patient = $patientStmt->fetch();
+    if (!$selected_patient) {
+        http_response_code(404);
+        exit('Patient not found.');
+    }
+
+    $activeEpisodeStmt = $pdo->prepare("SELECT 1 FROM pregnancy_episodes WHERE patient_id = :id AND status = 'active' LIMIT 1");
+    $activeEpisodeStmt->execute([':id' => $selected_patient_id]);
+    if ($activeEpisodeStmt->fetchColumn()) {
+        $error = 'This patient already has an active pregnancy. Open the current pregnancy record instead.';
+        $selected_patient_has_active_episode = true;
+    }
+}
 
 // Get next client number
 $client_number = generateClientNumber($pdo);
@@ -20,30 +56,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
         $pdo->beginTransaction();
-        
-        // Insert patient
-        $stmt = $pdo->prepare("INSERT INTO patients (nin, surname, first_name, age, client_category, phone, district, sub_county, parish, village, created_by) 
-                              VALUES (:nin, :surname, :first_name, :age, :category, :phone, :district, :sub_county, :parish, :village, :created_by)");
-        $stmt->execute([
-            ':nin' => emptyToNull($_POST['nin'] ?? null),
-            ':surname' => $_POST['surname'],
-            ':first_name' => $_POST['first_name'],
-            ':age' => !empty($_POST['age']) ? $_POST['age'] : null,
-            ':category' => $_POST['client_category'],
-            ':phone' => emptyToNull($_POST['phone'] ?? null),
-            ':district' => emptyToNull($_POST['district'] ?? null),
-            ':sub_county' => emptyToNull($_POST['sub_county'] ?? null),
-            ':parish' => emptyToNull($_POST['parish'] ?? null),
-            ':village' => emptyToNull($_POST['village'] ?? null),
-            ':created_by' => currentUserId()
-        ]);
-        $patient_id = $pdo->lastInsertId();
-        
-        // Calculate EDD from LMP
-        $lmp = $_POST['lmp'];
+        $existingPatientValue = $_POST['existing_patient_id'] ?? '';
+        $existingPatientId = $existingPatientValue === ''
+            ? null
+            : filter_var($existingPatientValue, FILTER_VALIDATE_INT);
+        $lmp = $_POST['lmp'] ?? '';
+        $firstAncDate = $_POST['first_anc_date'] ?? '';
+        $isValidDate = static function (string $date): bool {
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
+                && checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4));
+        };
+        if (!$isValidDate($lmp) || !$isValidDate($firstAncDate)) {
+            throw new InvalidArgumentException('Enter valid dates for the last menstrual period and first ANC visit.');
+        }
+        if ($lmp > $firstAncDate || $firstAncDate > $today) {
+            throw new InvalidArgumentException('The first ANC date must be on or after the LMP and cannot be in the future.');
+        }
+        if ($existingPatientId === false) {
+            throw new InvalidArgumentException('Invalid existing patient selection.');
+        }
+        $gravida = filter_var($_POST['gravida'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $parity = filter_var($_POST['parity'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($gravida === false || $parity === false || $parity > $gravida) {
+            throw new InvalidArgumentException('Enter a valid obstetric history: gravida must be at least one and parity cannot exceed gravida.');
+        }
+
+        if ($existingPatientId !== null) {
+            if ($existingPatientId < 1) {
+                throw new InvalidArgumentException('Invalid existing patient selection.');
+            }
+            $lockPatient = $pdo->prepare('SELECT id FROM patients WHERE id = :id FOR UPDATE');
+            $lockPatient->execute([':id' => $existingPatientId]);
+            $patient_id = $lockPatient->fetchColumn();
+            if (!$patient_id) {
+                throw new InvalidArgumentException('The selected patient was not found.');
+            }
+            $activeCheck = $pdo->prepare("SELECT 1 FROM pregnancy_episodes WHERE patient_id = :id AND status = 'active' LIMIT 1");
+            $activeCheck->execute([':id' => $patient_id]);
+            if ($activeCheck->fetchColumn()) {
+                throw new InvalidArgumentException('This patient already has an active pregnancy.');
+            }
+            $lastEndStmt = $pdo->prepare(
+                "SELECT MAX(COALESCE(dr.delivery_datetime, pe.closed_date))
+                 FROM pregnancy_episodes pe
+                 LEFT JOIN delivery_records dr ON dr.pregnancy_episode_id = pe.id
+                 WHERE pe.patient_id = :id"
+            );
+            $lastEndStmt->execute([':id' => $patient_id]);
+            $lastPregnancyEnd = $lastEndStmt->fetchColumn();
+            if ($lastPregnancyEnd && $lmp <= substr($lastPregnancyEnd, 0, 10)) {
+                throw new InvalidArgumentException('The new LMP must be after the end date of the patient’s previous recorded pregnancy.');
+            }
+        } else {
+            if (trim($_POST['surname'] ?? '') === '' || trim($_POST['first_name'] ?? '') === '') {
+                throw new InvalidArgumentException('Enter the mother’s surname and first name.');
+            }
+            $stmt = $pdo->prepare("INSERT INTO patients (nin, surname, first_name, age, client_category, phone, district, sub_county, parish, village, created_by)
+                                  VALUES (:nin, :surname, :first_name, :age, :category, :phone, :district, :sub_county, :parish, :village, :created_by)");
+            $stmt->execute([
+                ':nin' => emptyToNull($_POST['nin'] ?? null),
+                ':surname' => trim($_POST['surname'] ?? ''),
+                ':first_name' => trim($_POST['first_name'] ?? ''),
+                ':age' => !empty($_POST['age']) ? $_POST['age'] : null,
+                ':category' => $_POST['client_category'] ?? 'N',
+                ':phone' => emptyToNull($_POST['phone'] ?? null),
+                ':district' => emptyToNull($_POST['district'] ?? null),
+                ':sub_county' => emptyToNull($_POST['sub_county'] ?? null),
+                ':parish' => emptyToNull($_POST['parish'] ?? null),
+                ':village' => emptyToNull($_POST['village'] ?? null),
+                ':created_by' => currentUserId()
+            ]);
+            $patient_id = $pdo->lastInsertId();
+        }
+
         $edd = calculateEDD($lmp);
-        $booking_ga = calculateGestationalAge($lmp, date('Y-m-d'));
-        $booking_timing = $booking_ga && $booking_ga <= 12 ? 'early' : 'late';
+        $booking_ga = calculateGestationalAge($lmp, $firstAncDate);
+        $booking_timing = $booking_ga !== null && $booking_ga <= 12 ? 'early' : 'late';
         
         // Insert pregnancy episode
         $stmt = $pdo->prepare("INSERT INTO pregnancy_episodes (patient_id, client_number, gravida, parity, lmp, edd, booking_ga_weeks, booking_timing, status, created_by) 
@@ -51,8 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([
             ':patient_id' => $patient_id,
             ':client_number' => $client_number,
-            ':gravida' => $_POST['gravida'],
-            ':parity' => $_POST['parity'],
+            ':gravida' => $gravida,
+            ':parity' => $parity,
             ':lmp' => $lmp,
             ':edd' => $edd,
             ':booking_ga' => $booking_ga,
@@ -76,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             syphilis_result, hepatitis_b_result, llin_given, mebendazole_status,
             iron_folate_tablets, combined_fefan_tablets, misoprostol_tablets, recorded_by
         ) VALUES (
-            :episode_id, :serial_no, 1, CURDATE(), :next_visit, :ga,
+            :episode_id, :serial_no, 1, :first_anc_date, :next_visit, :ga,
             :weight, :height, :muac, :muac_color, :inr,
             :bp_sys, :bp_dias, :diagnosis, :complications, :tt,
             :hiv_code, :hivst_kit, :partner_age, :partner_result, :partner_tfv,
@@ -87,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([
             ':episode_id' => $episode_id,
             ':serial_no' => $serial_no,
+            ':first_anc_date' => $firstAncDate,
             ':next_visit' => emptyToNull($_POST['next_visit_date'] ?? null),
             ':ga' => $booking_ga,
             ':weight' => !empty($_POST['weight_kg']) ? $_POST['weight_kg'] : null,
@@ -100,13 +189,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':complications' => emptyToNull($_POST['complications'] ?? null),
             ':tt' => !empty($_POST['tt_dose']) ? $_POST['tt_dose'] : null,
             ':hiv_code' => emptyToNull($_POST['woman_hiv_code'] ?? null),
-            ':hivst_kit' => isset($_POST['hivst_kit_given']) ? 1 : 0,
+            ':hivst_kit' => formBoolean($_POST, 'hivst_kit_given'),
             ':partner_age' => !empty($_POST['partner_age']) ? $_POST['partner_age'] : null,
             ':partner_result' => emptyToNull($_POST['partner_result_code'] ?? null),
             ':partner_tfv' => emptyToNull($_POST['partner_tfv_code'] ?? null),
             ':syphilis' => emptyToNull($_POST['syphilis_result'] ?? null),
             ':hep_b' => emptyToNull($_POST['hepatitis_b_result'] ?? null),
-            ':llin' => isset($_POST['llin_given']) ? 1 : 0,
+            ':llin' => formBoolean($_POST, 'llin_given'),
             ':mebenda' => emptyToNull($_POST['mebendazole_status'] ?? null),
             ':iron' => !empty($_POST['iron_folate_tablets']) ? $_POST['iron_folate_tablets'] : null,
             ':fefan' => !empty($_POST['combined_fefan_tablets']) ? $_POST['combined_fefan_tablets'] : null,
@@ -114,17 +203,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':recorded_by' => currentUserId()
         ]);
         
+        if ($existingPatientId === null) {
+            logAction($pdo, currentUserId(), 'CREATE_PATIENT', 'patients', $patient_id, 'Registered new patient');
+        }
+        logAction($pdo, currentUserId(), 'CREATE_PREGNANCY_EPISODE', 'pregnancy_episodes', $episode_id, "Registered pregnancy episode with client number: $client_number");
         $pdo->commit();
         
-        logAction($pdo, $_SESSION['user_id'], 'CREATE_PATIENT', 'patients', $patient_id, "Registered new patient with client number: $client_number");
-        
-        $success = "Patient registered successfully! Client Number: $client_number";
+        $success = ($existingPatientId === null ? 'Patient registered' : 'New pregnancy registered for existing patient')
+            . "! Client Number: $client_number";
         
         echo "<script>setTimeout(function() { window.location.href = 'patient_profile.php?id=$patient_id'; }, 2000);</script>";
         
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $error = "Registration failed: " . $e->getMessage();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($e instanceof InvalidArgumentException) {
+            $error = $e->getMessage();
+        } else {
+            error_log('Patient registration failed: ' . $e->getMessage());
+            $error = 'Could not complete the registration. Please review the details and try again.';
+        }
     }
 }
 ?>
@@ -392,10 +491,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="form-card">
         <!-- Header -->
         <div class="form-header">
-            <h1><i class="fas fa-plus-circle"></i> New ANC Registration</h1>
-            <p>Register a pregnant mother for Antenatal Care at Lubaga Hospital</p>
+            <h1><i class="fas fa-plus-circle"></i> <?php echo $selected_patient ? 'New Pregnancy Episode' : 'New ANC Registration'; ?></h1>
+            <p><?php echo $selected_patient ? 'Create a new pregnancy record for this existing patient. Her demographic record will be retained.' : 'Register a pregnant mother for Antenatal Care at Lubaga Hospital'; ?></p>
             <div class="client-badge">
-                <div class="label"><i class="fas fa-id-card"></i> NEW CLIENT NUMBER</div>
+                <div class="label"><i class="fas fa-id-card"></i> NEW PREGNANCY CLIENT NUMBER</div>
                 <div class="number"><?php echo $client_number; ?></div>
             </div>
         </div>
@@ -404,18 +503,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($success): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i>
-                <span><?php echo $success; ?> Redirecting to patient profile...</span>
+                <span><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?> Redirecting to patient profile...</span>
             </div>
         <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo $error; ?></span>
+                <span><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></span>
             </div>
         <?php endif; ?>
         
         <form method="POST">
             <?php echo csrfField(); ?>
+            <?php if ($selected_patient): ?>
+                <input type="hidden" name="existing_patient_id" value="<?php echo (int) $selected_patient['id']; ?>">
+                <div class="form-section">
+                    <div class="section-title">
+                        <div class="section-icon"><i class="fas fa-user-check"></i></div>
+                        <div><h3>Existing Patient</h3><p>This pregnancy will be added to her existing longitudinal record.</p></div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Name</label><input value="<?php echo htmlspecialchars($selected_patient['surname'] . ' ' . $selected_patient['first_name'], ENT_QUOTES, 'UTF-8'); ?>" disabled></div>
+                        <div class="form-group"><label>NIN</label><input value="<?php echo htmlspecialchars($selected_patient['nin'] ?? '—', ENT_QUOTES, 'UTF-8'); ?>" disabled></div>
+                        <div class="form-group"><label>Phone</label><input value="<?php echo htmlspecialchars($selected_patient['phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?>" disabled></div>
+                        <div class="form-group"><label>Recorded pregnancy episodes</label><input value="<?php echo (int) $selected_patient['episode_count']; ?>" disabled></div>
+                        <?php if ($selected_patient['last_pregnancy_end']): ?>
+                            <div class="form-group"><label>Last recorded pregnancy end</label><input value="<?php echo htmlspecialchars(formatDate($selected_patient['last_pregnancy_end']), ENT_QUOTES, 'UTF-8'); ?>" disabled></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="form-hint">Confirm gravida and parity from the mother’s complete obstetric history; the system count may not include pregnancies managed elsewhere.</div>
+                </div>
+            <?php else: ?>
             <!-- SECTION 1: PATIENT DEMOGRAPHICS -->
             <div class="form-section">
                 <div class="section-title">
@@ -486,6 +604,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
             
             <!-- SECTION 3: PREGNANCY INFORMATION -->
             <div class="form-section">
@@ -507,9 +626,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="form-group half-width">
                         <label>Last Menstrual Period (LMP) <span class="required">*</span></label>
-                        <input type="date" name="lmp" required>
-                        <div class="form-hint"><i class="fas fa-calendar"></i> Used to calculate EDD</div>
+                        <input type="date" name="lmp" id="lmp" max="<?php echo htmlspecialchars($today, ENT_QUOTES, 'UTF-8'); ?>" required>
+                        <div class="form-hint"><i class="fas fa-calendar"></i> Estimated due date is calculated as LMP + 280 days. Confirm dates clinically.</div>
                     </div>
+                    <div class="form-group half-width">
+                        <label>First ANC Visit Date <span class="required">*</span></label>
+                        <input type="date" name="first_anc_date" id="first_anc_date" value="<?php echo htmlspecialchars($today, ENT_QUOTES, 'UTF-8'); ?>" max="<?php echo htmlspecialchars($today, ENT_QUOTES, 'UTF-8'); ?>" required>
+                        <div class="form-hint">Enter the actual visit date, including when recording a historical visit.</div>
+                    </div>
+                    <div class="form-group half-width" id="pregnancy_date_prediction" aria-live="polite"></div>
                 </div>
             </div>
             
@@ -662,10 +787,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- BUTTONS -->
             <div class="form-actions">
                 <button type="reset" class="btn-reset"><i class="fas fa-undo"></i> Reset</button>
-                <button type="submit" class="btn-submit"><i class="fas fa-save"></i> Register Patient</button>
+                <button type="submit" class="btn-submit" <?php echo $selected_patient_has_active_episode ? 'disabled' : ''; ?>><i class="fas fa-save"></i> <?php echo $selected_patient ? 'Register New Pregnancy' : 'Register Patient'; ?></button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+    const lmpInput = document.getElementById('lmp');
+    const firstAncInput = document.getElementById('first_anc_date');
+    const prediction = document.getElementById('pregnancy_date_prediction');
+
+    function updatePregnancyDatePrediction() {
+        prediction.replaceChildren();
+        if (!lmpInput.value || !firstAncInput.value || lmpInput.value > firstAncInput.value) return;
+
+        const lmp = new Date(`${lmpInput.value}T00:00:00Z`);
+        const visit = new Date(`${firstAncInput.value}T00:00:00Z`);
+        const days = Math.floor((visit - lmp) / 86400000);
+        const due = new Date(lmp);
+        due.setUTCDate(due.getUTCDate() + 280);
+        const result = document.createElement('div');
+        result.className = 'form-hint';
+        result.textContent = `Estimated due date: ${due.toISOString().slice(0, 10)} · Gestational age at first visit: ${Math.floor(days / 7)} weeks ${days % 7} days`;
+        prediction.append(result);
+    }
+
+    lmpInput.addEventListener('change', updatePregnancyDatePrediction);
+    firstAncInput.addEventListener('change', updatePregnancyDatePrediction);
+    updatePregnancyDatePrediction();
+</script>
 
 <?php require_once 'footer.php'; ?>

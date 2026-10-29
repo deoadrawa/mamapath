@@ -78,4 +78,15 @@ INSERT INTO `appointment_types` (`code`, `label`) VALUES
 ('ANC', 'Antenatal care'),
 ('DELIVERY', 'Delivery review'),
 ('PNC', 'Postnatal care'),
+('CHILD', 'Child health follow-up'),
 ('OTHER', 'Other');
+
+INSERT INTO `screening_catalog` (`code`, `name`, `population`, `value_kind`, `default_unit`) VALUES
+('HAEMOGLOBIN', 'Haemoglobin', 'maternal', 'numeric', NULL),
+('FERRITIN', 'Ferritin', 'maternal', 'numeric', NULL),
+('THYROID', 'Thyroid function', 'maternal', 'text', NULL),
+('HIV', 'HIV screening', 'any', 'categorical', NULL),
+('SYPHILIS', 'Syphilis screening', 'maternal', 'categorical', NULL),
+('HEPATITIS_B', 'Hepatitis B screening', 'maternal', 'categorical', NULL),
+('URINALYSIS', 'Urinalysis', 'maternal', 'text', NULL),
+('OTHER', 'Other screening', 'any', 'text', NULL);

@@ -14,7 +14,7 @@ $success = '';
 $patient_info = null;
 
 // Get active pregnancies for dropdown
-$patients = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.id as episode_id, pe.client_number, pe.gravida, pe.parity, pe.edd
+$patients = $pdo->query("SELECT p.id, pe.lmp, p.surname, p.first_name, pe.id as episode_id, pe.client_number, pe.gravida, pe.parity, pe.edd
                          FROM patients p 
                          JOIN pregnancy_episodes pe ON p.id = pe.patient_id 
                          WHERE pe.status = 'active'
@@ -23,7 +23,11 @@ $patients = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.id as episode_
 if (isset($_GET['episode_id'])) {
     $stmt = $pdo->prepare("SELECT p.*, pe.* FROM patients p 
                            JOIN pregnancy_episodes pe ON p.id = pe.patient_id 
-                           WHERE pe.id = :eid");
+                           WHERE pe.id = :eid AND pe.status = 'active'
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM delivery_records dr
+                                 WHERE dr.pregnancy_episode_id = pe.id
+                             )");
     $stmt->execute([':eid' => $_GET['episode_id']]);
     $patient_info = $stmt->fetch();
 }
@@ -33,7 +37,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         requireCSRF();
         $pdo->beginTransaction();
         
-        $episode_id = $_POST['episode_id'];
+        $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
+        $episodeStmt = $pdo->prepare(
+            "SELECT p.id, pe.lmp
+             FROM pregnancy_episodes pe
+             JOIN patients p ON p.id = pe.patient_id
+             WHERE pe.id = :id AND pe.status = 'active'
+               AND NOT EXISTS (
+                   SELECT 1 FROM delivery_records dr
+                   WHERE dr.pregnancy_episode_id = pe.id
+               )"
+        );
+        $episodeStmt->execute([':id' => $episode_id]);
+        $episode = $episodeStmt->fetch();
+        $patient_id = $episode['id'] ?? null;
+        if ($episode_id === false || $episode_id < 1 || !$patient_id) {
+            throw new InvalidArgumentException('Choose an active pregnancy without an existing delivery record.');
+        }
+        $admissionInput = $_POST['admission_datetime'] ?? '';
+        $deliveryInput = $_POST['delivery_datetime'] ?? '';
+        $admissionDate = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $admissionInput);
+        $deliveryDate = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $deliveryInput);
+        if (
+            !$admissionDate || $admissionDate->format('Y-m-d\TH:i') !== $admissionInput
+            || !$deliveryDate || $deliveryDate->format('Y-m-d\TH:i') !== $deliveryInput
+        ) {
+            throw new InvalidArgumentException('Enter valid admission and delivery dates and times.');
+        }
+        $now = new DateTimeImmutable();
+        if ($admissionDate > $now || $deliveryDate > $now || $deliveryDate < $admissionDate) {
+            throw new InvalidArgumentException('Admission and delivery dates must be valid past dates, and delivery cannot precede admission.');
+        }
+        if (!empty($episode['lmp']) && $deliveryDate->format('Y-m-d') < $episode['lmp']) {
+            throw new InvalidArgumentException('The delivery date cannot be before the recorded LMP.');
+        }
+
+        $number_of_babies = filter_var($_POST['number_of_babies'] ?? 1, FILTER_VALIDATE_INT);
+        if ($number_of_babies === false || $number_of_babies < 1 || $number_of_babies > 8) {
+            throw new InvalidArgumentException('The number of babies must be between 1 and 8.');
+        }
+        $additionalBabies = $_POST['additional_babies'] ?? [];
+        if (!is_array($additionalBabies)) {
+            throw new InvalidArgumentException('Invalid newborn details.');
+        }
+        $babySexes = ['M', 'F'];
+        $resuscitationCodes = ['BM', 'BMD', 'NA', 'SS'];
+        $babyConditionCodes = ['AL', 'AL_R', 'BDF', 'FSB', 'MSB', 'NND'];
+        $firstBabySex = $_POST['baby_sex'] ?? '';
+        if (!in_array($firstBabySex, $babySexes, true)) {
+            throw new InvalidArgumentException('Select the first newborn’s sex.');
+        }
+        $babyRows = [[
+            'baby_sex' => $firstBabySex,
+            'baby_weight_kg' => emptyToNull($_POST['baby_weight_kg'] ?? null),
+            'apgar_1min' => emptyToNull($_POST['apgar_1min'] ?? null),
+            'apgar_5min' => emptyToNull($_POST['apgar_5min'] ?? null),
+            'apgar_asphyxia' => formBoolean($_POST, 'apgar_asphyxia'),
+            'resuscitation_code' => emptyToNull($_POST['resuscitation_code'] ?? null),
+            'skin_to_skin' => formBoolean($_POST, 'skin_to_skin'),
+            'breastfed_1hr' => formBoolean($_POST, 'breastfed_1hr'),
+            'routine_meds_teo' => formBoolean($_POST, 'routine_meds_teo'),
+            'routine_meds_vitk' => formBoolean($_POST, 'routine_meds_vitk'),
+            'routine_meds_chlorhexidine' => formBoolean($_POST, 'routine_meds_chlorhexidine'),
+            'condition_at_discharge' => emptyToNull($_POST['baby_condition_at_discharge'] ?? null),
+        ]];
+        for ($birthOrder = 2; $birthOrder <= $number_of_babies; $birthOrder++) {
+            $baby = $additionalBabies[$birthOrder] ?? null;
+            if (!is_array($baby) || !in_array($baby['baby_sex'] ?? '', $babySexes, true)) {
+                throw new InvalidArgumentException('Enter the sex for each newborn.');
+            }
+            $resuscitation = emptyToNull($baby['resuscitation_code'] ?? null);
+            $condition = emptyToNull($baby['condition_at_discharge'] ?? null);
+            if ($resuscitation !== null && !in_array($resuscitation, $resuscitationCodes, true)) {
+                throw new InvalidArgumentException('Choose a valid resuscitation code.');
+            }
+            if ($condition !== null && !in_array($condition, $babyConditionCodes, true)) {
+                throw new InvalidArgumentException('Choose a valid newborn discharge condition.');
+            }
+            $babyRows[] = [
+                'baby_sex' => $baby['baby_sex'],
+                'baby_weight_kg' => emptyToNull($baby['baby_weight_kg'] ?? null),
+                'apgar_1min' => emptyToNull($baby['apgar_1min'] ?? null),
+                'apgar_5min' => emptyToNull($baby['apgar_5min'] ?? null),
+                'apgar_asphyxia' => formBoolean($baby, 'apgar_asphyxia'),
+                'resuscitation_code' => $resuscitation,
+                'skin_to_skin' => formBoolean($baby, 'skin_to_skin'),
+                'breastfed_1hr' => formBoolean($baby, 'breastfed_1hr'),
+                'routine_meds_teo' => formBoolean($baby, 'routine_meds_teo'),
+                'routine_meds_vitk' => formBoolean($baby, 'routine_meds_vitk'),
+                'routine_meds_chlorhexidine' => formBoolean($baby, 'routine_meds_chlorhexidine'),
+                'condition_at_discharge' => $condition,
+            ];
+        }
+        foreach ($babyRows as &$baby) {
+            if (
+                $baby['resuscitation_code'] !== null
+                && !in_array($baby['resuscitation_code'], $resuscitationCodes, true)
+            ) {
+                throw new InvalidArgumentException('Choose a valid resuscitation code for each newborn.');
+            }
+            if (
+                $baby['condition_at_discharge'] !== null
+                && !in_array($baby['condition_at_discharge'], $babyConditionCodes, true)
+            ) {
+                throw new InvalidArgumentException('Choose a valid discharge condition for each newborn.');
+            }
+            if ($baby['baby_weight_kg'] !== null) {
+                if (!is_numeric($baby['baby_weight_kg']) || (float) $baby['baby_weight_kg'] < 0 || (float) $baby['baby_weight_kg'] > 10) {
+                    throw new InvalidArgumentException('Newborn weights must be between 0 and 10 kg.');
+                }
+                $baby['baby_weight_kg'] = (float) $baby['baby_weight_kg'];
+            }
+            foreach (['apgar_1min', 'apgar_5min'] as $apgarField) {
+                if ($baby[$apgarField] === null) {
+                    continue;
+                }
+                $apgar = filter_var(
+                    $baby[$apgarField],
+                    FILTER_VALIDATE_INT,
+                    ['options' => ['min_range' => 0, 'max_range' => 10]]
+                );
+                if ($apgar === false) {
+                    throw new InvalidArgumentException('Apgar scores must be whole numbers from 0 to 10.');
+                }
+                $baby[$apgarField] = $apgar;
+            }
+        }
+        unset($baby);
+
         $admission_no = getNextSerialNo($pdo, 'delivery_records', 'admission_datetime');
         $ipd_no = generateIPDNumber($pdo);
         
@@ -47,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             syphilis_result, hepatitis_b_result, muac_cm, muac_color,
             mode_of_delivery, delivery_datetime, bba, active_management_3rd_stage,
             management_complication, other_treatment,
-            baby_sex, baby_weight_kg, apgar_1min, apgar_5min, apgar_asphyxia,
+            baby_sex, baby_weight_kg, apgar_1min, apgar_5min, apgar_asphyxia, number_of_babies,
             resuscitation_code, skin_to_skin, source_warmth, breastfed_1hr,
             routine_meds_teo, routine_meds_vitk, routine_meds_chlorhexidine,
             risk_status, infant_arv_given, infant_arv_duration,
@@ -59,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             :syphilis, :hep_b, :muac, :muac_color,
             :mode, :delivery_dt, :bba, :active_3rd,
             :management, :other_tx,
-            :baby_sex, :baby_wt, :apgar1, :apgar5, :asphyxia,
+            :baby_sex, :baby_wt, :apgar1, :apgar5, :asphyxia, :number_of_babies,
             :resus, :skin2skin, :warmth, :bf_1hr,
             :teo, :vitk, :chlor,
             :risk, :infant_arv, :infant_arv_dur,
@@ -70,7 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':episode_id' => $episode_id,
             ':admission_no' => $admission_no,
             ':ipd_no' => $ipd_no,
-            ':admission_datetime' => $_POST['admission_datetime'],
+            ':admission_datetime' => $admissionDate->format('Y-m-d H:i:s'),
             ':reason' => $_POST['reason_for_admission'] ?? null,
             ':gest_weeks' => !empty($_POST['gestation_weeks']) ? $_POST['gestation_weeks'] : null,
             ':term_preterm' => $_POST['term_preterm'] ?? null,
@@ -78,54 +209,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':emtct_p' => $_POST['emtct_code_partner'] ?? null,
             ':mother_art' => $_POST['mother_art_code'] ?? null,
             ':mother_art_num' => $_POST['mother_art_number'] ?? null,
-            ':ctx' => isset($_POST['ctx_given']) ? 1 : 0,
+            ':ctx' => formBoolean($_POST, 'ctx_given'),
             ':syphilis' => $_POST['syphilis_result'] ?? null,
             ':hep_b' => $_POST['hepatitis_b_result'] ?? null,
             ':muac' => $muac_cm,
             ':muac_color' => $muac_color,
             ':mode' => $_POST['mode_of_delivery'],
-            ':delivery_dt' => $_POST['delivery_datetime'],
-            ':bba' => isset($_POST['bba']) ? 1 : 0,
+            ':delivery_dt' => $deliveryDate->format('Y-m-d H:i:s'),
+            ':bba' => formBoolean($_POST, 'bba'),
             ':active_3rd' => $_POST['active_management_3rd_stage'] ?? null,
             ':management' => $_POST['management_complication'] ?? null,
             ':other_tx' => $_POST['other_treatment'] ?? null,
             ':baby_sex' => $_POST['baby_sex'],
+            ':number_of_babies' => $number_of_babies,
             ':baby_wt' => !empty($_POST['baby_weight_kg']) ? $_POST['baby_weight_kg'] : null,
             ':apgar1' => !empty($_POST['apgar_1min']) ? $_POST['apgar_1min'] : null,
             ':apgar5' => !empty($_POST['apgar_5min']) ? $_POST['apgar_5min'] : null,
-            ':asphyxia' => isset($_POST['apgar_asphyxia']) ? 1 : 0,
+            ':asphyxia' => formBoolean($_POST, 'apgar_asphyxia'),
             ':resus' => emptyToNull($_POST['resuscitation_code'] ?? null),
-            ':skin2skin' => isset($_POST['skin_to_skin']) ? 1 : 0,
+            ':skin2skin' => formBoolean($_POST, 'skin_to_skin'),
             ':warmth' => $_POST['source_warmth'] ?? 'mother_warmth',
-            ':bf_1hr' => isset($_POST['breastfed_1hr']) ? 1 : 0,
-            ':teo' => isset($_POST['routine_meds_teo']) ? 1 : 0,
-            ':vitk' => isset($_POST['routine_meds_vitk']) ? 1 : 0,
-            ':chlor' => isset($_POST['routine_meds_chlorhexidine']) ? 1 : 0,
+            ':bf_1hr' => formBoolean($_POST, 'breastfed_1hr'),
+            ':teo' => formBoolean($_POST, 'routine_meds_teo'),
+            ':vitk' => formBoolean($_POST, 'routine_meds_vitk'),
+            ':chlor' => formBoolean($_POST, 'routine_meds_chlorhexidine'),
             ':risk' => $_POST['risk_status'] ?? null,
-            ':infant_arv' => isset($_POST['infant_arv_given']) ? 1 : 0,
+            ':infant_arv' => formBoolean($_POST, 'infant_arv_given'),
             ':infant_arv_dur' => $_POST['infant_arv_duration'] ?? null,
             ':fp_code' => !empty($_POST['postpartum_fp_code']) ? $_POST['postpartum_fp_code'] : null,
             ':baby_condition' => emptyToNull($_POST['baby_condition_at_discharge'] ?? null),
-            ':maternal_death' => isset($_POST['maternal_death']) ? 1 : 0,
+            ':maternal_death' => formBoolean($_POST, 'maternal_death'),
             ':maternal_cause' => emptyToNull($_POST['maternal_death_cause'] ?? null),
             ':recorded_by' => currentUserId()
         ]);
+        $delivery_record_id = $pdo->lastInsertId();
+
+        $babyInsert = $pdo->prepare(
+            "INSERT INTO babies (
+                delivery_record_id, birth_order, baby_sex, baby_weight_kg,
+                apgar_1min, apgar_5min, apgar_asphyxia, resuscitation_code,
+                skin_to_skin, breastfed_1hr, routine_meds_teo, routine_meds_vitk,
+                routine_meds_chlorhexidine, condition_at_discharge
+             ) VALUES (
+                :delivery_id, :birth_order, :baby_sex, :weight,
+                :apgar_1, :apgar_5, :asphyxia, :resuscitation,
+                :skin_to_skin, :breastfed, :teo, :vitk,
+                :chlorhexidine, :condition
+             )"
+        );
+        foreach ($babyRows as $index => $baby) {
+            $babyInsert->execute([
+                ':delivery_id' => $delivery_record_id,
+                ':birth_order' => $index + 1,
+                ':baby_sex' => $baby['baby_sex'],
+                ':weight' => $baby['baby_weight_kg'],
+                ':apgar_1' => $baby['apgar_1min'],
+                ':apgar_5' => $baby['apgar_5min'],
+                ':asphyxia' => $baby['apgar_asphyxia'],
+                ':resuscitation' => $baby['resuscitation_code'],
+                ':skin_to_skin' => $baby['skin_to_skin'],
+                ':breastfed' => $baby['breastfed_1hr'],
+                ':teo' => $baby['routine_meds_teo'],
+                ':vitk' => $baby['routine_meds_vitk'],
+                ':chlorhexidine' => $baby['routine_meds_chlorhexidine'],
+                ':condition' => $baby['condition_at_discharge'],
+            ]);
+        }
         
         // Update pregnancy episode status
         $update = $pdo->prepare("UPDATE pregnancy_episodes SET status = 'delivered', closed_date = CURDATE() WHERE id = :id");
         $update->execute([':id' => $episode_id]);
         
+        logAction($pdo, $_SESSION['user_id'], 'CREATE_DELIVERY', 'delivery_records', $delivery_record_id, "Recorded delivery with IPD: $ipd_no");
         $pdo->commit();
-        
-        logAction($pdo, $_SESSION['user_id'], 'CREATE_DELIVERY', 'delivery_records', $pdo->lastInsertId(), "Recorded delivery with IPD: $ipd_no");
         
         $success = "Delivery recorded successfully! IPD Number: $ipd_no";
         
-        echo "<script>setTimeout(function() { window.location.href = 'patient_profile.php?id={$_POST['patient_id']}'; }, 2000);</script>";
+        echo '<script>setTimeout(function(){window.location.href='
+            . json_encode('patient_profile.php?id=' . rawurlencode((string) $patient_id), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+            . ';},2000);</script>';
         
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $error = "Failed to record delivery: " . $e->getMessage();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($e instanceof InvalidArgumentException) {
+            $error = $e->getMessage();
+        } else {
+            error_log('Delivery request failed: ' . $e->getMessage());
+            $error = 'Could not record the delivery. Please review the details and try again.';
+        }
     }
 }
 ?>
@@ -485,7 +658,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($error): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo $error; ?></span>
+                <span><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></span>
             </div>
         <?php endif; ?>
         
@@ -534,7 +707,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
             
-            <form method="POST">
+            <form method="POST" id="deliveryForm">
                 <?php echo csrfField(); ?>
                 <input type="hidden" name="episode_id" value="<?php echo $_GET['episode_id']; ?>">
                 <input type="hidden" name="patient_id" value="<?php echo $patient_info['id']; ?>">
@@ -636,6 +809,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="form-grid">
                         <div class="form-group">
+                            <label for="number_of_babies">Number of babies delivered</label>
+                            <select name="number_of_babies" id="number_of_babies" required>
+                                <?php for ($count = 1; $count <= 8; $count++): ?>
+                                    <option value="<?php echo $count; ?>"><?php echo $count; ?></option>
+                                <?php endfor; ?>
+                            </select>
+                            <div class="form-hint">Record separate newborn assessments for twins or multiple births.</div>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
                             <label>Baby Sex <span class="required">*</span></label>
                             <select name="baby_sex" required>
                                 <option value="">-- Select --</option>
@@ -723,6 +907,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </select>
                         </div>
                     </div>
+                    <?php for ($birthOrder = 2; $birthOrder <= 8; $birthOrder++): ?>
+                        <fieldset class="form-section additional-baby" data-birth-order="<?php echo $birthOrder; ?>" hidden disabled>
+                            <legend>Baby <?php echo $birthOrder; ?> Assessment</legend>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Sex <span class="required">*</span></label>
+                                    <select name="additional_babies[<?php echo $birthOrder; ?>][baby_sex]">
+                                        <option value="">-- Select --</option><option value="M">Male</option><option value="F">Female</option>
+                                    </select>
+                                </div>
+                                <div class="form-group"><label>Weight (kg)</label><input type="number" step="0.01" min="0" max="10" name="additional_babies[<?php echo $birthOrder; ?>][baby_weight_kg]"></div>
+                                <div class="form-group"><label>Apgar (1 min)</label><input type="number" min="0" max="10" name="additional_babies[<?php echo $birthOrder; ?>][apgar_1min]"></div>
+                                <div class="form-group"><label>Apgar (5 min)</label><input type="number" min="0" max="10" name="additional_babies[<?php echo $birthOrder; ?>][apgar_5min]"></div>
+                                <div class="form-group"><label>Asphyxia?</label><select name="additional_babies[<?php echo $birthOrder; ?>][apgar_asphyxia]"><option value="0">No</option><option value="1">Yes</option></select></div>
+                                <div class="form-group"><label>Resuscitation</label><select name="additional_babies[<?php echo $birthOrder; ?>][resuscitation_code]"><option value="">-- Select --</option><option value="SS">Stimulation/Suction</option><option value="BM">Bag &amp; Mask</option><option value="BMD">Bag &amp; Mask - Died</option><option value="NA">Normal breathing</option></select></div>
+                                <div class="form-group"><label>Skin to skin</label><select name="additional_babies[<?php echo $birthOrder; ?>][skin_to_skin]"><option value="0">No</option><option value="1">Yes</option></select></div>
+                                <div class="form-group"><label>Breastfed within 1 hour</label><select name="additional_babies[<?php echo $birthOrder; ?>][breastfed_1hr]"><option value="0">No</option><option value="1">Yes</option></select></div>
+                                <div class="form-group"><label>Condition at discharge</label><select name="additional_babies[<?php echo $birthOrder; ?>][condition_at_discharge]"><option value="">-- Select --</option><option value="AL">Alive</option><option value="AL_R">Alive - Referred</option><option value="BDF">Born with Defect</option><option value="FSB">Fresh Still Birth</option><option value="MSB">Macerated Still Birth</option><option value="NND">Neonatal Death</option></select></div>
+                                <div class="form-group">
+                                    <label>Routine medications</label>
+                                    <label><input type="checkbox" name="additional_babies[<?php echo $birthOrder; ?>][routine_meds_teo]" value="1"> TEO</label>
+                                    <label><input type="checkbox" name="additional_babies[<?php echo $birthOrder; ?>][routine_meds_vitk]" value="1"> Vitamin K</label>
+                                    <label><input type="checkbox" name="additional_babies[<?php echo $birthOrder; ?>][routine_meds_chlorhexidine]" value="1"> Chlorhexidine</label>
+                                </div>
+                            </div>
+                        </fieldset>
+                    <?php endfor; ?>
                 </div>
                 
                 <!-- Section 4: HIV & Lab Results -->
@@ -879,6 +1090,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+    const babyCount = document.getElementById('number_of_babies');
+    const additionalBabySections = document.querySelectorAll('.additional-baby');
+    function updateBabySections() {
+        const count = Number(babyCount.value);
+        additionalBabySections.forEach(section => {
+            const visible = Number(section.dataset.birthOrder) <= count;
+            section.hidden = !visible;
+            section.disabled = !visible;
+            const sexField = section.querySelector('select[name$="[baby_sex]"]');
+            if (sexField) sexField.required = visible;
+        });
+    }
+    babyCount?.addEventListener('change', updateBabySections);
+    updateBabySections();
+
     // Show/hide maternal death cause field
     document.getElementById('maternal_death')?.addEventListener('change', function() {
         const causeGroup = document.getElementById('maternal_cause_group');

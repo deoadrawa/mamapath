@@ -7,7 +7,6 @@
 // ============================================
 
 require_once 'config.php';
-require_once 'nav.php';
 requireLogin();
 
 $patient_id = $_GET['id'] ?? 0;
@@ -26,7 +25,13 @@ if (!$patient) {
 }
 
 // Get all pregnancy episodes
-$stmt = $pdo->prepare("SELECT * FROM pregnancy_episodes WHERE patient_id = :id ORDER BY created_at DESC");
+$stmt = $pdo->prepare(
+    "SELECT pe.*, dr.delivery_datetime, dr.number_of_babies
+     FROM pregnancy_episodes pe
+     LEFT JOIN delivery_records dr ON dr.pregnancy_episode_id = pe.id
+     WHERE pe.patient_id = :id
+     ORDER BY pe.lmp DESC, pe.id DESC"
+);
 $stmt->execute([':id' => $patient_id]);
 $episodes = $stmt->fetchAll();
 
@@ -45,6 +50,7 @@ foreach ($episodes as $ep) {
 $current_episode = $active_episode ?? ($episodes[0] ?? null);
 $anc_visits = [];
 $delivery = null;
+$babies = [];
 $postnatal = [];
 
 if ($current_episode) {
@@ -56,10 +62,71 @@ if ($current_episode) {
     $stmt->execute([':id' => $current_episode['id']]);
     $delivery = $stmt->fetch();
     
-    $stmt = $pdo->prepare("SELECT * FROM postnatal_visits WHERE pregnancy_episode_id = :id ORDER BY visit_date ASC");
+    if ($delivery) {
+        $stmt = $pdo->prepare('SELECT * FROM babies WHERE delivery_record_id = :id ORDER BY birth_order');
+        $stmt->execute([':id' => $delivery['id']]);
+        $babies = $stmt->fetchAll();
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT pv.*, b.birth_order
+         FROM postnatal_visits pv
+         LEFT JOIN babies b ON b.id = pv.baby_id
+         WHERE pv.pregnancy_episode_id = :id
+         ORDER BY pv.visit_date ASC, pv.id ASC"
+    );
     $stmt->execute([':id' => $current_episode['id']]);
     $postnatal = $stmt->fetchAll();
 }
+
+$stmt = $pdo->prepare(
+    'SELECT s.*, c.name AS screening_name, pe.client_number
+     FROM screening_results s
+     JOIN screening_catalog c ON c.code = s.screening_code
+     LEFT JOIN pregnancy_episodes pe ON pe.id = s.pregnancy_episode_id
+     WHERE s.patient_id = :patient_id
+     ORDER BY s.performed_at DESC, s.id DESC LIMIT 100'
+);
+$stmt->execute([':patient_id' => $patient_id]);
+$screening_results = $stmt->fetchAll();
+
+$stmt = $pdo->prepare(
+    'SELECT r.*, pe.client_number, b.birth_order, c.name AS screening_name
+     FROM referrals r
+     LEFT JOIN pregnancy_episodes pe ON pe.id = r.pregnancy_episode_id
+     LEFT JOIN babies b ON b.id = r.baby_id
+     LEFT JOIN screening_results s ON s.id = r.screening_result_id
+     LEFT JOIN screening_catalog c ON c.code = s.screening_code
+     WHERE r.patient_id = :patient_id
+     ORDER BY r.referral_date DESC, r.id DESC LIMIT 100'
+);
+$stmt->execute([':patient_id' => $patient_id]);
+$referral_records = $stmt->fetchAll();
+
+$stmt = $pdo->prepare(
+    'SELECT v.*, b.birth_order, d.delivery_datetime, pe.client_number,
+            DATEDIFF(v.visit_date, DATE(d.delivery_datetime)) AS age_at_visit_days
+     FROM child_health_visits v
+     JOIN babies b ON b.id = v.baby_id
+     JOIN delivery_records d ON d.id = b.delivery_record_id
+     JOIN pregnancy_episodes pe ON pe.id = d.pregnancy_episode_id
+     WHERE pe.patient_id = :patient_id
+     ORDER BY v.visit_date DESC, v.id DESC LIMIT 100'
+);
+$stmt->execute([':patient_id' => $patient_id]);
+$child_health_visits = $stmt->fetchAll();
+
+$stmt = $pdo->prepare(
+    'SELECT i.*, b.birth_order, pe.client_number
+     FROM child_immunizations i
+     JOIN babies b ON b.id = i.baby_id
+     JOIN delivery_records d ON d.id = b.delivery_record_id
+     JOIN pregnancy_episodes pe ON pe.id = d.pregnancy_episode_id
+     WHERE pe.patient_id = :patient_id
+     ORDER BY i.event_date DESC, i.id DESC LIMIT 100'
+);
+$stmt->execute([':patient_id' => $patient_id]);
+$child_immunizations = $stmt->fetchAll();
 
 // Calculate summary statistics
 $total_anc_visits = count($anc_visits);
@@ -69,6 +136,7 @@ $tt_completed = $anc_visits ? max(array_filter(array_column($anc_visits, 'tt_dos
 $iptp_doses = array_unique(array_filter(array_column($anc_visits, 'iptp_dose')));
 $total_iptp = count($iptp_doses);
 ?>
+<?php require_once 'nav.php'; ?>
 
 <style>
     /* Profile Header */
@@ -356,10 +424,15 @@ $total_iptp = count($iptp_doses);
         <?php if ($active_episode): ?>
             <a href="anc_visit.php?episode_id=<?php echo $active_episode['id']; ?>" class="quick-btn quick-btn-primary"><i class="fas fa-notes-medical"></i> ANC</a>
             <a href="delivery_admission.php?episode_id=<?php echo $active_episode['id']; ?>" class="quick-btn quick-btn-success"><i class="fas fa-birthday-cake"></i> Delivery</a>
+            <a href="screenings.php?patient_id=<?php echo (int) $patient['id']; ?>&episode_id=<?php echo (int) $active_episode['id']; ?>" class="quick-btn"><i class="fas fa-vial"></i> Screening</a>
+            <a href="referrals.php?patient_id=<?php echo (int) $patient['id']; ?>&episode_id=<?php echo (int) $active_episode['id']; ?>" class="quick-btn"><i class="fas fa-share-square"></i> Referral</a>
         <?php else: ?>
-            <a href="register_patient.php" class="quick-btn quick-btn-primary"><i class="fas fa-plus"></i> New Pregnancy</a>
+            <a href="register_patient.php?patient_id=<?php echo (int) $patient['id']; ?>" class="quick-btn quick-btn-primary"><i class="fas fa-plus"></i> New Pregnancy</a>
+            <a href="screenings.php?patient_id=<?php echo (int) $patient['id']; ?>" class="quick-btn"><i class="fas fa-vial"></i> Screening</a>
+            <a href="referrals.php?patient_id=<?php echo (int) $patient['id']; ?>" class="quick-btn"><i class="fas fa-share-square"></i> Referral</a>
         <?php endif; ?>
         <a href="postnatal_visit.php" class="quick-btn quick-btn-warning"><i class="fas fa-hand-holding-heart"></i> PNC</a>
+        <a href="child_followup.php" class="quick-btn"><i class="fas fa-baby"></i> Child Health</a>
         <a href="patients.php" class="quick-btn"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -431,6 +504,18 @@ $total_iptp = count($iptp_doses);
             <div class="info-item"><span class="info-label">Gravida / Parity:</span><span class="info-value"><?php echo $current_episode['gravida']; ?> / <?php echo $current_episode['parity']; ?></span></div>
             <div class="info-item"><span class="info-label">LMP:</span><span class="info-value"><?php echo formatDate($current_episode['lmp']); ?></span></div>
             <div class="info-item"><span class="info-label">EDD:</span><span class="info-value value-info"><?php echo formatDate($current_episode['edd']); ?></span></div>
+            <?php if ($current_episode['status'] === 'active' && $current_episode['lmp']): ?>
+                <?php
+                    $current_ga_interval = (new DateTimeImmutable($current_episode['lmp']))->diff(new DateTimeImmutable('today'));
+                ?>
+                <div class="info-item"><span class="info-label">Estimated gestation today:</span><span class="info-value"><?php
+                    if ($current_ga_interval->invert) {
+                        echo 'Check LMP date';
+                    } else {
+                        echo intdiv($current_ga_interval->days, 7) . ' weeks ' . ($current_ga_interval->days % 7) . ' days (LMP-based)';
+                    }
+                ?></span></div>
+            <?php endif; ?>
             <div class="info-item"><span class="info-label">Booking GA:</span><span class="info-value <?php echo ($current_episode['booking_ga_weeks'] ?? 0) <= 12 ? 'value-positive' : 'value-warning'; ?>"><?php echo $current_episode['booking_ga_weeks'] ?? '—'; ?> weeks</span></div>
             <div class="info-item"><span class="info-label">Booking Timing:</span><span class="info-value <?php echo $current_episode['booking_timing'] == 'early' ? 'value-positive' : 'value-warning'; ?>"><?php echo $current_episode['booking_timing'] == 'early' ? '✅ Early (≤12 wks)' : '⚠️ Late (>12 wks)'; ?></span></div>
         </div>
@@ -495,11 +580,21 @@ $total_iptp = count($iptp_doses);
             <div class="info-item"><span class="info-label">Delivery Date:</span><span class="info-value"><?php echo formatDateTime($delivery['delivery_datetime']); ?></span></div>
             <div class="info-item"><span class="info-label">Mode:</span><span class="info-value"><?php echo str_replace('_', ' ', $delivery['mode_of_delivery']); ?></span></div>
             <div class="info-item"><span class="info-label">Gestation:</span><span class="info-value"><?php echo $delivery['gestation_weeks']; ?> wks (<?php echo $delivery['term_preterm'] == 'T' ? 'Term' : 'Pre-term'; ?>)</span></div>
-            <div class="info-item"><span class="info-label">Baby:</span><span class="info-value"><?php echo $delivery['baby_sex'] == 'M' ? '👶 Male' : '👶 Female'; ?>, <?php echo $delivery['baby_weight_kg']; ?> kg</span></div>
-            <div class="info-item"><span class="info-label">Apgar:</span><span class="info-value"><?php echo $delivery['apgar_1min'] . '/' . $delivery['apgar_5min']; ?></span></div>
-            <div class="info-item"><span class="info-label">Skin to Skin:</span><span class="info-value"><?php echo $delivery['skin_to_skin'] ? '✅ Yes' : '❌ No'; ?></span></div>
-            <div class="info-item"><span class="info-label">Breastfed 1hr:</span><span class="info-value"><?php echo $delivery['breastfed_1hr'] ? '✅ Yes' : '❌ No'; ?></span></div>
-            <div class="info-item"><span class="info-label">Baby Condition:</span><span class="info-value <?php echo in_array($delivery['baby_condition_at_discharge'], ['MSB','FSB','NND']) ? 'value-danger' : 'value-positive'; ?>"><?php echo $delivery['baby_condition_at_discharge']; ?></span></div>
+            <div class="info-item"><span class="info-label">Babies delivered:</span><span class="info-value"><?php echo count($babies) ?: (int) ($delivery['number_of_babies'] ?? 1); ?></span></div>
+            <?php if ($babies): ?>
+                <?php foreach ($babies as $baby): ?>
+                    <div class="info-item">
+                        <span class="info-label">Baby <?php echo (int) $baby['birth_order']; ?>:</span>
+                        <span class="info-value"><?php echo $baby['baby_sex'] === 'M' ? 'Male' : 'Female'; ?><?php echo $baby['baby_weight_kg'] !== null ? ', ' . htmlspecialchars($baby['baby_weight_kg'], ENT_QUOTES, 'UTF-8') . ' kg' : ''; ?> · Apgar <?php echo htmlspecialchars(($baby['apgar_1min'] ?? '—') . '/' . ($baby['apgar_5min'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?> · <a href="child_followup.php?baby_id=<?php echo (int) $baby['id']; ?>">Record child follow-up</a></span>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="info-item"><span class="info-label">Baby:</span><span class="info-value"><?php echo $delivery['baby_sex'] == 'M' ? '👶 Male' : '👶 Female'; ?>, <?php echo $delivery['baby_weight_kg']; ?> kg</span></div>
+                <div class="info-item"><span class="info-label">Apgar:</span><span class="info-value"><?php echo $delivery['apgar_1min'] . '/' . $delivery['apgar_5min']; ?></span></div>
+                <div class="info-item"><span class="info-label">Skin to Skin:</span><span class="info-value"><?php echo $delivery['skin_to_skin'] ? '✅ Yes' : '❌ No'; ?></span></div>
+                <div class="info-item"><span class="info-label">Breastfed 1hr:</span><span class="info-value"><?php echo $delivery['breastfed_1hr'] ? '✅ Yes' : '❌ No'; ?></span></div>
+                <div class="info-item"><span class="info-label">Baby Condition:</span><span class="info-value <?php echo in_array($delivery['baby_condition_at_discharge'], ['MSB','FSB','NND']) ? 'value-danger' : 'value-positive'; ?>"><?php echo $delivery['baby_condition_at_discharge']; ?></span></div>
+            <?php endif; ?>
             <div class="info-item"><span class="info-label">Postpartum FP:</span><span class="info-value"><?php echo $delivery['postpartum_fp_code'] ?? '—'; ?></span></div>
         </div>
         <?php if ($delivery['management_complication']): ?>
@@ -526,12 +621,13 @@ $total_iptp = count($iptp_doses);
     <div class="timeline-content">
         <?php if (count($postnatal) > 0): ?>
             <table class="data-table">
-                <thead><tr><th>Timing</th><th>Date</th><th>Mother Wt</th><th>Breast</th><th>Cervix</th><th>FP</th><th>Baby Wt</th><th>Feeding</th><th>DBS</th><th>Immunization</th></tr></thead>
+                <thead><tr><th>Timing</th><th>Date</th><th>Newborn</th><th>Mother Wt</th><th>Breast</th><th>Cervix</th><th>FP</th><th>Baby Wt</th><th>Feeding</th><th>DBS</th><th>Immunization</th></tr></thead>
                 <tbody>
                     <?php foreach ($postnatal as $pn): ?>
                     <tr>
                         <td><strong><?php echo str_replace('_', ' ', $pn['visit_timing']); ?></strong></td>
                         <td><?php echo formatDate($pn['visit_date']); ?></td>
+                        <td><?php echo $pn['birth_order'] ? 'Baby ' . (int) $pn['birth_order'] : '—'; ?></td>
                         <td><?php echo $pn['mother_weight_kg']; ?> kg</td>
                         <td><?php echo ['FOM'=>'✅ Normal','SS'=>'⚠️ Abnormal','ND'=>'—'][$pn['breast_status']] ?? '-'; ?></td>
                         <td><?php echo ['FOM'=>'✅ Normal','SS'=>'⚠️ Suspicious','ND'=>'—'][$pn['cervix_status']] ?? '-'; ?></td>
@@ -550,13 +646,84 @@ $total_iptp = count($iptp_doses);
     </div>
 </div>
 
+<!-- Continuity records -->
+<div class="timeline-card">
+    <div class="timeline-header">
+        <h3><i class="fas fa-link"></i> Screening, referrals & child follow-up</h3>
+        <span><?php echo count($screening_results) . ' screening · ' . count($referral_records) . ' referral · ' . count($child_health_visits) . ' child visit(s)'; ?></span>
+    </div>
+    <div class="timeline-content">
+        <?php if ($screening_results): ?>
+            <div class="section-title"><i class="fas fa-vial"></i> Screening</div>
+            <table class="data-table">
+                <thead><tr><th>Date</th><th>Test</th><th>Status</th><th>Value / result</th><th>Episode</th></tr></thead>
+                <tbody><?php foreach ($screening_results as $screen): ?>
+                    <tr>
+                        <td><?php echo formatDate($screen['performed_at']); ?></td>
+                        <td><?php echo htmlspecialchars($screen['screening_name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars(ucfirst($screen['result_status']), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars(trim(($screen['numeric_value'] ?? '') . ' ' . ($screen['value_unit'] ?? '') . ' ' . ($screen['result_text'] ?? '') . ($screen['method'] ? ' · Method: ' . $screen['method'] : '')), ENT_QUOTES, 'UTF-8') ?: '—'; ?></td>
+                        <td><?php echo htmlspecialchars($screen['client_number'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php endforeach; ?></tbody>
+            </table>
+        <?php endif; ?>
+        <?php if ($referral_records): ?>
+            <div class="section-title"><i class="fas fa-share-square"></i> Referrals</div>
+            <table class="data-table">
+                <thead><tr><th>Date</th><th>Reason</th><th>Destination</th><th>Status</th><th>Follow-up</th></tr></thead>
+                <tbody><?php foreach ($referral_records as $referral): ?>
+                    <tr>
+                        <td><?php echo formatDate($referral['referral_date']); ?></td>
+                        <td><?php echo htmlspecialchars($referral['reason'], ENT_QUOTES, 'UTF-8'); ?><?php if ($referral['screening_name']): ?><br><small>Screening: <?php echo htmlspecialchars($referral['screening_name'], ENT_QUOTES, 'UTF-8'); ?></small><?php endif; ?><br><small><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $referral['urgency'])), ENT_QUOTES, 'UTF-8'); ?></small></td>
+                        <td><?php echo htmlspecialchars($referral['destination'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $referral['status'])), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo formatDate($referral['followup_date']); ?></td>
+                    </tr>
+                <?php endforeach; ?></tbody>
+            </table>
+        <?php endif; ?>
+        <?php if ($child_health_visits): ?>
+            <div class="section-title"><i class="fas fa-baby"></i> Child health encounters</div>
+            <table class="data-table">
+                <thead><tr><th>Date</th><th>Newborn / age</th><th>Growth measures</th><th>Care notes</th></tr></thead>
+                <tbody><?php foreach ($child_health_visits as $childVisit): ?>
+                    <tr>
+                        <td><?php echo formatDate($childVisit['visit_date']); ?></td>
+                        <td><?php echo 'Baby ' . (int) $childVisit['birth_order'] . ' · ' . (int) $childVisit['age_at_visit_days'] . ' days'; ?></td>
+                        <td><?php echo $childVisit['weight_kg'] !== null ? htmlspecialchars($childVisit['weight_kg'] . ' kg', ENT_QUOTES, 'UTF-8') : '—'; ?> · <?php echo $childVisit['length_cm'] !== null ? htmlspecialchars($childVisit['length_cm'] . ' cm', ENT_QUOTES, 'UTF-8') : '—'; ?></td>
+                        <td><?php echo htmlspecialchars($childVisit['feeding_status'] ?? '', ENT_QUOTES, 'UTF-8'); ?><?php if ($childVisit['developmental_concerns']): ?><br><?php echo htmlspecialchars($childVisit['developmental_concerns'], ENT_QUOTES, 'UTF-8'); ?><?php endif; ?></td>
+                    </tr>
+                <?php endforeach; ?></tbody>
+            </table>
+        <?php endif; ?>
+        <?php if ($child_immunizations): ?>
+            <div class="section-title"><i class="fas fa-syringe"></i> Child immunization events</div>
+            <table class="data-table">
+                <thead><tr><th>Date</th><th>Newborn</th><th>Vaccine / dose</th><th>Status</th></tr></thead>
+                <tbody><?php foreach ($child_immunizations as $immunization): ?>
+                    <tr>
+                        <td><?php echo formatDate($immunization['event_date']); ?></td>
+                        <td><?php echo 'Baby ' . (int) $immunization['birth_order']; ?></td>
+                        <td><?php echo htmlspecialchars($immunization['vaccine_name'] . ($immunization['dose_label'] ? ' · ' . $immunization['dose_label'] : ''), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $immunization['status'])), ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php endforeach; ?></tbody>
+            </table>
+        <?php endif; ?>
+        <?php if (!$screening_results && !$referral_records && !$child_health_visits && !$child_immunizations): ?>
+            <p style="color: var(--text-secondary); text-align: center; padding: 18px;">No screening, referral, or child health continuity records have been recorded for this patient.</p>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Previous Pregnancies -->
 <?php if (count($delivered_episodes) > 1 || ($delivered_episodes && !$active_episode)): ?>
 <div class="timeline-card">
     <div class="timeline-header"><h3><i class="fas fa-history"></i> Previous Pregnancy History</h3><span><?php echo count($delivered_episodes); ?> previous</span></div>
     <div class="timeline-content">
         <table class="data-table">
-            <thead><tr><th>Client Number</th><th>G/P</th><th>LMP</th><th>EDD</th><th>Booking GA</th><th>Status</th><th>Closed Date</th></tr></thead>
+            <thead><tr><th>Client Number</th><th>G/P</th><th>LMP</th><th>EDD</th><th>Booking GA</th><th>Status</th><th>Delivery / End Date</th><th>Newborns</th></tr></thead>
             <tbody>
                 <?php foreach ($delivered_episodes as $ep): ?>
                 <tr>
@@ -565,8 +732,9 @@ $total_iptp = count($iptp_doses);
                     <td><?php echo formatDate($ep['lmp']); ?></td>
                     <td><?php echo formatDate($ep['edd']); ?></td>
                     <td><?php echo $ep['booking_ga_weeks']; ?> wks</td>
-                    <td><span class="status-badge status-delivered"><?php echo ucfirst($ep['status']); ?></span></td>
-                    <td><?php echo formatDate($ep['closed_date']); ?></td>
+                    <td><span class="status-badge <?php echo $ep['status'] === 'delivered' ? 'status-delivered' : 'status-pending'; ?>"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $ep['status'])), ENT_QUOTES, 'UTF-8'); ?></span></td>
+                    <td><?php echo formatDate($ep['delivery_datetime'] ?: $ep['closed_date']); ?></td>
+                    <td><?php echo $ep['number_of_babies'] ? (int) $ep['number_of_babies'] : '—'; ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

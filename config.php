@@ -4,8 +4,10 @@
  */
 
 if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.use_strict_mode', '1');
     ini_set('session.cookie_httponly', '1');
     ini_set('session.cookie_samesite', 'Lax');
+    ini_set('session.cookie_secure', !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? '1' : '0');
     session_start();
 }
 
@@ -112,6 +114,12 @@ function emptyToNull($value)
     return $value;
 }
 
+function formBoolean(array $formData, string $key): int
+{
+    $value = $formData[$key] ?? null;
+    return in_array($value, [true, 1, '1', 'on'], true) ? 1 : 0;
+}
+
 function hashPassword(string $password): string
 {
     return password_hash($password, PASSWORD_DEFAULT);
@@ -141,6 +149,7 @@ function getUserRoleLabel(?string $role): string
         'nurse' => 'Nurse',
         'receptionist' => 'Receptionist',
         'manager' => 'Manager',
+        'community_health_worker' => 'Community Health Worker',
     ];
 
     $normalizedRole = normalizeUserRole($role);
@@ -185,10 +194,32 @@ function verifyLogin(PDO $pdo, string $username, string $password)
 
 function requireLogin(): void
 {
-    if (!isset($_SESSION['user_id'])) {
+    global $pdo;
+    if (!refreshCurrentUserSession($pdo)) {
         header('Location: login.php');
         exit;
     }
+}
+
+function refreshCurrentUserSession(PDO $pdo): bool
+{
+    if (empty($_SESSION['user_id'])) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('SELECT username, full_name, role FROM users WHERE id = :id AND is_active = 1');
+    $stmt->execute([':id' => $_SESSION['user_id']]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        $_SESSION = [];
+        session_destroy();
+        return false;
+    }
+
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['user_fullname'] = $user['full_name'];
+    $_SESSION['user_role'] = normalizeUserRole($user['role']);
+    return true;
 }
 
 function hasRole($roles): bool

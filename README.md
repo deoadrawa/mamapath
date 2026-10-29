@@ -39,16 +39,29 @@ Never import `demo_seed.sql` into a live database. These demo credentials and re
 - The fresh schema accepts legacy role values; `super_admin` is recognized as the existing `admin` role without granting `staff_admin` the same privilege.
 - Dashboard “Record Visit” used the patient id as `episode_id` — that link now uses the pregnancy episode.
 - Excel export in reports wrote broken row tags (`32...6` instead of `<tr>...</tr>`).
+- Clinical pages and reports are available to authenticated staff; staff-account and audit-log administration is limited to administrators.
+- Appointment scheduling, status tracking, staff-account administration, and a paginated audit-log viewer are available from the navigation.
+- Delivery records support up to eight newborns, and postnatal visits can be linked to the newborn receiving care. Delivery and perinatal reports count individual newborns while retaining compatibility with older single-baby records.
+- A returning mother can be linked to her existing patient record and registered for a new pregnancy episode after a prior episode has ended. Each episode has its own client number, ANC history, and delivery; one active episode per mother is enforced by the application.
+- First ANC and follow-up dates are stored as entered, invalid/future clinical dates are rejected, and estimated due dates are calculated from LMP. Dashboard follow-up uses an explicitly entered next visit or a scheduled appointment rather than assuming a fixed 28-day interval.
+- Child encounters are recorded per newborn with dated growth, feeding, and developmental observations through 730 days after birth. Immunization events are separately structured by vaccine name, dose label, date, status, and optional lot number. Alongside pregnancy records, this supports continuity across approximately the first 1,000 days from conception without inferring an immunization schedule or diagnosing from growth values.
+- Structured screening records capture the test, date, reported status, value/unit, and result notes. Abnormal/pending counts are surfaced for follow-up; the application does not apply clinical thresholds or generate diagnoses.
+- Referrals can be linked to the mother, pregnancy episode, newborn, and a recorded screening result, with urgency, receiving destination, follow-up date, completion status, and outcome notes.
+- Resource planning records commodity receipts/issues/adjustments and monthly cadre-level staffing capacity. Stock on hand is ledger-based, with transparent 90-day issue-rate indicators; workload counts reflect recorded encounters attributed to staff accounts.
+- Report exports validate their requested report/date range and HTML-escape exported database values.
 - Live patient dump (`u454222977_lubaga.sql`) is not in git. It contains identifiable clinical data.
 
-## Remaining gaps (not in this pass)
+## Known limitations
 
-- Role-based screens: `requireRole()` exists, but most pages only check login.
-- No user-admin UI (create / deactivate staff).
-- `next_visit_date` is stored when entered; the dashboard still also infers a 28-day interval for overdue lists.
-- No appointment calendar or SMS reminders.
+- Pregnancy dating currently uses LMP + 280 days; ultrasound-confirmed dating and a dating-confidence/source field should be added with the hospital’s approved clinical data standard.
+- Appointments are scheduled and listed, but there is no calendar view or SMS reminder service.
 - Partner HIV codes on the old dump were free text (`neg`, `good`) rather than HMIS codes.
-- Twins / multiple births are still one baby row per delivery.
+- Existing delivery records remain readable as single-baby records; newborn rows are created for deliveries recorded after the multiple-birth workflow is deployed.
+- Uganda MoH/HMIS and facility-approved protocols should be checked and versioned by clinical leadership before any screening result definitions, immunization schedules, pregnancy-contact cadence, or referral thresholds are treated as clinical rules. The current forms capture observations and workflow status but deliberately do not infer diagnoses or care schedules.
+- Screening history and child immunization history use structured event records, but a clinically validated test catalog, controlled vaccine/dose vocabulary, growth-chart interpretation, and approved reminder schedule remain future work.
+- Commodity planning is a basic, auditable signal from the locally recorded stock ledger and 90-day issue rate; it is not an automated procurement order or a forecast until completeness, lead times, and stock counts are validated. Staffing capacity and encounter totals are captured separately and need facility review before being used for workload decisions.
+
+For an existing database, back it up before applying `sql/upgrade_existing.sql`. Review the migration against the exact database version and schema first; the fresh-install schema already contains these additions.
 
 ## Layout
 
@@ -65,6 +78,13 @@ postnatal_visit.php     PNC
 patient_profile.php     full journey
 search_global.php
 reports.php
+appointments.php         appointment scheduling and status tracking
+child_followup.php       per-newborn child health follow-up through 730 days
+screenings.php           structured maternal/newborn screening register
+referrals.php            referral and completion tracking
+resource_planning.php    commodity ledger, staffing capacity, and workload
+users.php                admin-only staff account management
+audit_log.php            admin-only activity log
 api.php                 JSON helpers
 sql/                    schema, lookup/demo seeds, upgrade
 ```

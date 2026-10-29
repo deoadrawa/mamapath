@@ -246,6 +246,17 @@ $user_role = $_SESSION['user_role'] ?? '';
             border-left: 3px solid #00897b;
         }
 
+        .nav-item[data-menu="appointments"]:hover,
+        .nav-item[data-menu="appointments"].active,
+        .nav-item[data-menu="users"]:hover,
+        .nav-item[data-menu="users"].active,
+        .nav-item[data-menu="audit"]:hover,
+        .nav-item[data-menu="audit"].active {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            border-left: 3px solid #90caf9;
+        }
+
         /* Main Content */
         .main-content {
             flex: 1;
@@ -343,8 +354,10 @@ $user_role = $_SESSION['user_role'] ?? '';
         }
 
         .logout-link {
+            background: none;
+            border: 0;
             color: var(--danger);
-            text-decoration: none;
+            cursor: pointer;
             font-size: 16px;
             opacity: 0.7;
             transition: opacity 0.2s;
@@ -436,6 +449,36 @@ $user_role = $_SESSION['user_role'] ?? '';
                 <i class="fas fa-chart-bar"></i>
                 <span>Reports & Analytics</span>
             </a>
+            <a href="appointments.php" class="nav-item" data-menu="appointments" id="menu-appointments">
+                <i class="fas fa-calendar-check"></i>
+                <span>Appointments</span>
+            </a>
+            <a href="child_followup.php" class="nav-item" data-menu="child" id="menu-child">
+                <i class="fas fa-baby"></i>
+                <span>Child Health</span>
+            </a>
+            <a href="screenings.php" class="nav-item" data-menu="screenings" id="menu-screenings">
+                <i class="fas fa-vial"></i>
+                <span>Screening</span>
+            </a>
+            <a href="referrals.php" class="nav-item" data-menu="referrals" id="menu-referrals">
+                <i class="fas fa-share-square"></i>
+                <span>Referrals</span>
+            </a>
+            <a href="resource_planning.php" class="nav-item" data-menu="resources" id="menu-resources">
+                <i class="fas fa-boxes"></i>
+                <span>Resources & Workforce</span>
+            </a>
+            <?php if (hasRole('admin')): ?>
+                <a href="users.php" class="nav-item" data-menu="users" id="menu-users">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Staff Accounts</span>
+                </a>
+                <a href="audit_log.php" class="nav-item" data-menu="audit" id="menu-audit">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Audit Log</span>
+                </a>
+            <?php endif; ?>
         </div>
     </aside>
 
@@ -456,6 +499,13 @@ $user_role = $_SESSION['user_role'] ?? '';
                         'postnatal_visit.php' => 'Postnatal Care Services',
                         'search_global.php' => 'Advanced Global Search',
                         'reports.php' => 'Reports & Analytics Hub',
+                        'appointments.php' => 'Appointments',
+                        'child_followup.php' => 'Child Health Follow-up',
+                        'screenings.php' => 'Screening Register',
+                        'referrals.php' => 'Referral Tracking',
+                        'resource_planning.php' => 'Resources & Workforce Planning',
+                        'users.php' => 'Staff Accounts',
+                        'audit_log.php' => 'Audit Log',
                         'report_view.php' => 'Detailed Report Viewer',
                         'patient_profile.php' => 'Patient Journey Timeline'
                     ];
@@ -475,9 +525,12 @@ $user_role = $_SESSION['user_role'] ?? '';
                         <div class="user-name"><?php echo htmlspecialchars($user_name); ?></div>
                         <div class="user-role"><?php echo htmlspecialchars(getUserRoleLabel($user_role)); ?></div>
                     </div>
-                    <a href="logout.php" class="logout-link" title="Logout">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </a>
+                    <form method="POST" action="logout.php">
+                        <?php echo csrfField(); ?>
+                        <button type="submit" class="logout-link" title="Logout" aria-label="Log out">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -496,6 +549,13 @@ $user_role = $_SESSION['user_role'] ?? '';
             'postnatal_visit.php': 'menu-pnc',
             'search_global.php': 'menu-search',
             'reports.php': 'menu-reports',
+            'appointments.php': 'menu-appointments',
+            'child_followup.php': 'menu-child',
+            'screenings.php': 'menu-screenings',
+            'referrals.php': 'menu-referrals',
+            'resource_planning.php': 'menu-resources',
+            'users.php': 'menu-users',
+            'audit_log.php': 'menu-audit',
             'report_view.php': 'menu-reports',
             'patient_profile.php': 'menu-patients'
         };

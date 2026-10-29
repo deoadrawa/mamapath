@@ -68,7 +68,17 @@ $stmt = $pdo->query("SELECT AVG(visit_count) FROM (SELECT pregnancy_episode_id, 
 $stats['avg_anc_visits'] = round($stmt->fetchColumn(), 1);
 
 // Stillbirth rate
-$stmt = $pdo->query("SELECT COUNT(CASE WHEN baby_condition_at_discharge IN ('MSB','FSB') THEN 1 END) as sb, COUNT(*) as total FROM delivery_records");
+$stmt = $pdo->query(
+    "SELECT
+        SUM(CASE
+            WHEN b.id IS NULL THEN CASE WHEN dr.baby_condition_at_discharge IN ('MSB', 'FSB') THEN 1 ELSE 0 END
+            WHEN b.condition_at_discharge IN ('MSB', 'FSB') THEN 1
+            ELSE 0
+        END) AS sb,
+        COUNT(b.id) + SUM(CASE WHEN b.id IS NULL THEN 1 ELSE 0 END) AS total
+     FROM delivery_records dr
+     LEFT JOIN babies b ON b.delivery_record_id = dr.id"
+);
 $row = $stmt->fetch();
 $stats['stillbirth_rate'] = $row['total'] > 0 ? round(($row['sb'] / $row['total']) * 100, 1) : 0;
 
@@ -76,8 +86,8 @@ $stats['stillbirth_rate'] = $row['total'] > 0 ? round(($row['sb'] / $row['total'
 // UPCOMING VISITS & DELIVERIES (FIXED SQL)
 // ============================================
 
-// FIXED: Patients needing ANC visit this week (based on last visit + 4 weeks)
-// Using a subquery to pre-calculate last_visit
+// Use the clinician-entered next visit date or an actual scheduled appointment;
+// do not infer a clinical interval from the previous visit date.
 $stmt = $pdo->query("
     SELECT 
         p.id, 
@@ -87,29 +97,38 @@ $stmt = $pdo->query("
         p.phone, 
         pe.client_number, 
         pe.edd,
-        COALESCE(last_visits.last_visit_date, NULL) as last_visit,
-        CASE 
-            WHEN last_visits.last_visit_date IS NULL THEN 999 
-            ELSE DATEDIFF(CURDATE(), last_visits.last_visit_date) 
-        END as days_since_last,
+        last_visits.last_visit_date as last_visit,
+        COALESCE(scheduled_anc.scheduled_date, last_visits.next_visit_date) as next_due_date,
+        DATEDIFF(COALESCE(scheduled_anc.scheduled_date, last_visits.next_visit_date), CURDATE()) as days_to_next,
         pe.lmp,
         pe.gravida, 
         pe.parity
     FROM patients p
     JOIN pregnancy_episodes pe ON p.id = pe.patient_id
     LEFT JOIN (
-        SELECT pregnancy_episode_id, MAX(visit_date) as last_visit_date
-        FROM anc_visits
-        GROUP BY pregnancy_episode_id
+        SELECT av.pregnancy_episode_id, av.visit_date AS last_visit_date, av.next_visit_date
+        FROM anc_visits av
+        WHERE av.id = (
+            SELECT latest.id FROM anc_visits latest
+            WHERE latest.pregnancy_episode_id = av.pregnancy_episode_id
+            ORDER BY latest.visit_date DESC, latest.id DESC
+            LIMIT 1
+        )
     ) last_visits ON last_visits.pregnancy_episode_id = pe.id
+    LEFT JOIN (
+        SELECT pregnancy_episode_id, MIN(scheduled_date) AS scheduled_date
+        FROM appointments
+        WHERE appointment_type = 'ANC' AND status = 'scheduled' AND scheduled_date >= CURDATE()
+        GROUP BY pregnancy_episode_id
+    ) scheduled_anc ON scheduled_anc.pregnancy_episode_id = pe.id
     WHERE pe.status = 'active'
-    HAVING last_visit IS NULL OR DATEDIFF(CURDATE(), last_visit) >= 28
-    ORDER BY days_since_last DESC
+    HAVING next_due_date IS NULL OR next_due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+    ORDER BY next_due_date IS NULL, next_due_date
     LIMIT 10
 ");
 $upcoming_anc = $stmt->fetchAll();
 
-// Patients with upcoming EDD (next 30 days)
+// Include pregnancies with an EDD in the recent past as well as the next 30 days.
 $stmt = $pdo->query("
     SELECT 
         p.id, 
@@ -126,13 +145,13 @@ $stmt = $pdo->query("
     JOIN pregnancy_episodes pe ON p.id = pe.patient_id
     WHERE pe.status = 'active' 
       AND pe.edd IS NOT NULL
-      AND pe.edd BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+      AND pe.edd BETWEEN DATE_SUB(CURDATE(), INTERVAL 14 DAY) AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
     ORDER BY pe.edd ASC
     LIMIT 10
 ");
 $upcoming_deliveries = $stmt->fetchAll();
 
-// FIXED: Patients who missed their last scheduled visit (overdue by 6+ weeks)
+// Only report missed follow-ups when a clinician-entered date or appointment is overdue.
 $stmt = $pdo->query("
     SELECT 
         p.id, 
@@ -143,16 +162,28 @@ $stmt = $pdo->query("
         pe.client_number, 
         pe.edd,
         last_visits.last_visit_date as last_visit,
-        DATEDIFF(CURDATE(), last_visits.last_visit_date) as days_overdue
+        COALESCE(scheduled_anc.scheduled_date, last_visits.next_visit_date) as next_due_date,
+        DATEDIFF(CURDATE(), COALESCE(scheduled_anc.scheduled_date, last_visits.next_visit_date)) as days_overdue
     FROM patients p
     JOIN pregnancy_episodes pe ON p.id = pe.patient_id
-    INNER JOIN (
-        SELECT pregnancy_episode_id, MAX(visit_date) as last_visit_date
-        FROM anc_visits
-        GROUP BY pregnancy_episode_id
+    LEFT JOIN (
+        SELECT av.pregnancy_episode_id, av.visit_date AS last_visit_date, av.next_visit_date
+        FROM anc_visits av
+        WHERE av.id = (
+            SELECT latest.id FROM anc_visits latest
+            WHERE latest.pregnancy_episode_id = av.pregnancy_episode_id
+            ORDER BY latest.visit_date DESC, latest.id DESC
+            LIMIT 1
+        )
     ) last_visits ON last_visits.pregnancy_episode_id = pe.id
+    LEFT JOIN (
+        SELECT pregnancy_episode_id, MIN(scheduled_date) AS scheduled_date
+        FROM appointments
+        WHERE appointment_type = 'ANC' AND status = 'scheduled' AND scheduled_date >= CURDATE()
+        GROUP BY pregnancy_episode_id
+    ) scheduled_anc ON scheduled_anc.pregnancy_episode_id = pe.id
     WHERE pe.status = 'active'
-      AND DATEDIFF(CURDATE(), last_visits.last_visit_date) >= 42
+      AND COALESCE(scheduled_anc.scheduled_date, last_visits.next_visit_date) < CURDATE()
     ORDER BY days_overdue DESC
     LIMIT 10
 ");
@@ -549,12 +580,12 @@ if (!function_exists('formatDate')) {
     <div class="followup-card">
         <div class="followup-header">
             <h4><i class="fas fa-calendar-week" style="color: #1e88e5;"></i> Upcoming ANC Visits</h4>
-            <span class="followup-badge">Due this week</span>
+            <span class="followup-badge">Scheduled date, or needs scheduling</span>
         </div>
         <?php if (count($upcoming_anc) > 0): ?>
             <table class="followup-table">
                 <thead>
-                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Days Since</th><th>Action</th></tr>
+                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Next ANC Date</th><th>Action</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($upcoming_anc as $patient): ?>
@@ -562,8 +593,18 @@ if (!function_exists('formatDate')) {
                         <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
                         <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
                         <td><?php echo $patient['last_visit'] ? formatDate($patient['last_visit']) : 'No visits yet'; ?></td>
-                        <td class="<?php echo (($patient['days_since_last'] ?? 0) > 35 && ($patient['days_since_last'] ?? 0) != 999) ? 'urgent-badge' : ((($patient['days_since_last'] ?? 0) > 28 && ($patient['days_since_last'] ?? 0) != 999) ? 'warning-badge' : ''); ?>">
-                            <?php echo ($patient['days_since_last'] ?? 0) == 999 ? 'New patient' : ($patient['days_since_last'] . ' days'); ?>
+                        <td class="<?php echo $patient['days_to_next'] !== null && $patient['days_to_next'] < 0 ? 'urgent-badge' : 'warning-badge'; ?>">
+                            <?php
+                                if ($patient['next_due_date'] === null) {
+                                    echo 'Needs scheduling';
+                                } elseif ($patient['days_to_next'] < 0) {
+                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . abs((int) $patient['days_to_next']) . ' days overdue)', ENT_QUOTES, 'UTF-8');
+                                } elseif ((int) $patient['days_to_next'] === 0) {
+                                    echo 'Today';
+                                } else {
+                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (in ' . (int) $patient['days_to_next'] . ' days)', ENT_QUOTES, 'UTF-8');
+                                }
+                            ?>
                         </td>
                         <td><a href="anc_visit.php?episode_id=<?php echo (int)$patient['episode_id']; ?>" class="view-link">Record Visit →</a></td>
                     </tr>
@@ -579,12 +620,12 @@ if (!function_exists('formatDate')) {
     <div class="followup-card">
         <div class="followup-header">
             <h4><i class="fas fa-birthday-cake" style="color: #fb8c00;"></i> Expected Deliveries</h4>
-            <span class="followup-badge">Next 30 days</span>
+            <span class="followup-badge">EDD overdue up to 14 days through next 30 days</span>
         </div>
         <?php if (count($upcoming_deliveries) > 0): ?>
             <table class="followup-table">
                 <thead>
-                    <tr><th>Client #</th><th>Patient</th><th>EDD</th><th>Days Left</th><th>ANC Visits</th><th>Action</th></tr>
+                    <tr><th>Client #</th><th>Patient</th><th>EDD</th><th>Days to/from EDD</th><th>ANC Visits</th><th>Action</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($upcoming_deliveries as $patient): ?>
@@ -593,7 +634,7 @@ if (!function_exists('formatDate')) {
                         <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
                         <td><?php echo formatDate($patient['edd']); ?></td>
                         <td class="<?php echo $patient['days_to_edd'] <= 7 ? 'urgent-badge' : 'warning-badge'; ?>">
-                            <?php echo $patient['days_to_edd']; ?> days
+                            <?php echo $patient['days_to_edd'] < 0 ? 'EDD passed by ' . abs((int) $patient['days_to_edd']) . ' days' : (int) $patient['days_to_edd'] . ' days'; ?>
                         </td>
                         <td><?php echo $patient['anc_visits_count']; ?></td>
                         <td><a href="patient_profile.php?id=<?php echo $patient['id']; ?>" class="view-link">View →</a></td>
@@ -617,7 +658,7 @@ if (!function_exists('formatDate')) {
         <?php if (count($overdue_patients) > 0): ?>
             <table class="followup-table">
                 <thead>
-                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Days Overdue</th><th>Phone</th><th>Action</th></tr>
+                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Next ANC Due</th><th>Phone</th><th>Action</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($overdue_patients as $patient): ?>
@@ -625,7 +666,7 @@ if (!function_exists('formatDate')) {
                         <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
                         <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
                         <td><?php echo formatDate($patient['last_visit']); ?></td>
-                        <td class="urgent-badge"><?php echo $patient['days_overdue']; ?> days</td>
+                        <td class="urgent-badge"><?php echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . (int) $patient['days_overdue'] . ' days overdue)', ENT_QUOTES, 'UTF-8'); ?></td>
                         <td><?php echo htmlspecialchars($patient['phone'] ?? '—'); ?></td>
                         <td><a href="anc_visit.php?episode_id=<?php echo (int)$patient['episode_id']; ?>" class="view-link">Record Visit →</a></td>
                     </tr>

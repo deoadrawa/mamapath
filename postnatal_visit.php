@@ -13,7 +13,8 @@ $error = '';
 $success = '';
 
 // Get delivered patients
-$query = "SELECT p.id as patient_id, p.surname, p.first_name, pe.id as episode_id, pe.client_number, dr.delivery_datetime, dr.baby_sex, dr.baby_weight_kg
+$query = "SELECT p.id as patient_id, p.surname, p.first_name, pe.id as episode_id, pe.client_number,
+                 dr.id as delivery_record_id, dr.delivery_datetime, dr.baby_sex, dr.baby_weight_kg
           FROM patients p
           JOIN pregnancy_episodes pe ON p.id = pe.patient_id
           JOIN delivery_records dr ON dr.pregnancy_episode_id = pe.id
@@ -21,14 +22,82 @@ $query = "SELECT p.id as patient_id, p.surname, p.first_name, pe.id as episode_i
           ORDER BY dr.delivery_datetime DESC LIMIT 100";
 $patients = $pdo->query($query)->fetchAll();
 
-$selected_episode_id = $_GET['episode_id'] ?? '';
+$selected_episode_id = filter_var($_GET['episode_id'] ?? null, FILTER_VALIDATE_INT);
+$babies = [];
+if ($selected_episode_id !== false && $selected_episode_id !== null && $selected_episode_id > 0) {
+    $babyStmt = $pdo->prepare(
+        'SELECT b.id, b.birth_order, b.baby_sex, b.baby_weight_kg
+         FROM babies b
+         JOIN delivery_records dr ON dr.id = b.delivery_record_id
+         WHERE dr.pregnancy_episode_id = :episode_id
+         ORDER BY b.birth_order'
+    );
+    $babyStmt->execute([':episode_id' => $selected_episode_id]);
+    $babies = $babyStmt->fetchAll();
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
-        $episode_id = $_POST['episode_id'];
+        $pdo->beginTransaction();
+        $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
+        $episodeStmt = $pdo->prepare(
+            "SELECT p.id
+             FROM pregnancy_episodes pe
+             JOIN patients p ON p.id = pe.patient_id
+             JOIN delivery_records dr ON dr.pregnancy_episode_id = pe.id
+             WHERE pe.id = :episode_id AND pe.status = 'delivered'"
+        );
+        $episodeStmt->execute([':episode_id' => $episode_id]);
+        $patient_id = $episodeStmt->fetchColumn();
+        if ($episode_id === false || $episode_id < 1 || !$patient_id) {
+            throw new InvalidArgumentException('Choose a valid delivered pregnancy.');
+        }
+        $visitDate = $_POST['visit_date'] ?? '';
+        if (
+            preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate) !== 1
+            || !checkdate((int) substr($visitDate, 5, 2), (int) substr($visitDate, 8, 2), (int) substr($visitDate, 0, 4))
+            || $visitDate > date('Y-m-d')
+        ) {
+            throw new InvalidArgumentException('Enter a valid postnatal visit date that is not in the future.');
+        }
+        $deliveryDateStmt = $pdo->prepare('SELECT DATE(delivery_datetime) FROM delivery_records WHERE pregnancy_episode_id = :episode_id');
+        $deliveryDateStmt->execute([':episode_id' => $episode_id]);
+        $deliveryDate = $deliveryDateStmt->fetchColumn();
+        if ($deliveryDate && $visitDate < $deliveryDate) {
+            throw new InvalidArgumentException('A postnatal visit cannot be dated before delivery.');
+        }
+
+        $episodeBabies = $pdo->prepare(
+            'SELECT b.id FROM babies b
+             JOIN delivery_records dr ON dr.id = b.delivery_record_id
+             WHERE dr.pregnancy_episode_id = :episode_id
+             ORDER BY b.birth_order'
+        );
+        $episodeBabies->execute([':episode_id' => $episode_id]);
+        $episodeBabyIds = $episodeBabies->fetchAll(PDO::FETCH_COLUMN);
+
         $serial_no = getNextSerialNo($pdo, 'postnatal_visits', 'visit_date');
-        $patient_id = $_POST['patient_id'];
+        $babyId = empty($_POST['baby_id']) ? null : filter_var($_POST['baby_id'], FILTER_VALIDATE_INT);
+        if ($babyId === false || ($babyId !== null && $babyId < 1)) {
+            throw new InvalidArgumentException('Choose a valid newborn.');
+        }
+        if ($babyId === null && count($episodeBabyIds) === 1) {
+            $babyId = (int) $episodeBabyIds[0];
+        } elseif ($babyId === null && count($episodeBabyIds) > 1) {
+            throw new InvalidArgumentException('Choose which newborn this postnatal visit is for.');
+        }
+        if ($babyId !== null) {
+            $babyCheck = $pdo->prepare(
+                'SELECT 1 FROM babies b
+                 JOIN delivery_records dr ON dr.id = b.delivery_record_id
+                 WHERE b.id = :baby_id AND dr.pregnancy_episode_id = :episode_id'
+            );
+            $babyCheck->execute([':baby_id' => $babyId, ':episode_id' => $episode_id]);
+            if (!$babyCheck->fetchColumn()) {
+                throw new InvalidArgumentException('The selected newborn does not belong to this pregnancy.');
+            }
+        }
         
         $muac_cm = !empty($_POST['mother_muac_cm']) ? floatval($_POST['mother_muac_cm']) : null;
         $muac_color = $muac_cm ? getMUACColor($muac_cm) : 'ND';
@@ -42,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mother_diagnosis, baby_status, baby_age_days, baby_weight_kg,
             baby_diagnosis, infant_feeding_option, immunization_status,
             dbs_sample_taken, dbs_test_result, baby_septrin_given,
-            baby_referred, baby_referral_place, vitamin_a_given, recorded_by
+            baby_referred, baby_referral_place, vitamin_a_given, baby_id, recorded_by
         ) VALUES (
             :episode_id, :serial_no, :timing, :visit_date,
             :fp_code, :fp_other, :breast, :cervix,
@@ -52,14 +121,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             :diagnosis, :baby_status, :baby_age, :baby_wt,
             :baby_dx, :feeding, :immunization,
             :dbs, :dbs_result, :baby_septrin,
-            :baby_ref, :baby_ref_place, :vit_a, :recorded_by
+            :baby_ref, :baby_ref_place, :vit_a, :baby_id, :recorded_by
         )");
         
         $stmt->execute([
             ':episode_id' => $episode_id,
             ':serial_no' => $serial_no,
             ':timing' => $_POST['visit_timing'],
-            ':visit_date' => $_POST['visit_date'],
+            ':visit_date' => $visitDate,
             ':fp_code' => !empty($_POST['fp_method_code']) ? $_POST['fp_method_code'] : null,
             ':fp_other' => $_POST['fp_other'] ?? null,
             ':breast' => $_POST['breast_status'] ?? null,
@@ -72,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':partner_tfv' => $_POST['partner_tfv_code'] ?? null,
             ':art_code' => $_POST['mother_art_code'] ?? null,
             ':art_num' => $_POST['mother_art_number'] ?? null,
-            ':ctx' => isset($_POST['mother_ctx_given']) ? 1 : 0,
+            ':ctx' => formBoolean($_POST, 'mother_ctx_given'),
             ':diagnosis' => $_POST['mother_diagnosis'] ?? null,
             ':baby_status' => $_POST['baby_status'] ?? null,
             ':baby_age' => !empty($_POST['baby_age_days']) ? $_POST['baby_age_days'] : null,
@@ -80,23 +149,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':baby_dx' => $_POST['baby_diagnosis'] ?? null,
             ':feeding' => $_POST['infant_feeding_option'] ?? null,
             ':immunization' => $_POST['immunization_status'] ?? null,
-            ':dbs' => isset($_POST['dbs_sample_taken']) ? 1 : 0,
+            ':dbs' => formBoolean($_POST, 'dbs_sample_taken'),
             ':dbs_result' => $_POST['dbs_test_result'] ?? 'pending',
-            ':baby_septrin' => isset($_POST['baby_septrin_given']) ? 1 : 0,
-            ':baby_ref' => isset($_POST['baby_referred']) ? 1 : 0,
+            ':baby_septrin' => formBoolean($_POST, 'baby_septrin_given'),
+            ':baby_ref' => formBoolean($_POST, 'baby_referred'),
             ':baby_ref_place' => emptyToNull($_POST['baby_referral_place'] ?? null),
-            ':vit_a' => isset($_POST['vitamin_a_given']) ? 1 : 0,
+            ':vit_a' => formBoolean($_POST, 'vitamin_a_given'),
+            ':baby_id' => $babyId,
             ':recorded_by' => currentUserId()
         ]);
         
         logAction($pdo, $_SESSION['user_id'], 'CREATE_PNC_VISIT', 'postnatal_visits', $pdo->lastInsertId(), "Recorded PNC visit: {$_POST['visit_timing']}");
+        $pdo->commit();
         
         $success = "Postnatal visit recorded successfully!";
         
-        echo "<script>setTimeout(function() { window.location.href = 'patient_profile.php?id=$patient_id'; }, 2000);</script>";
+        echo '<script>setTimeout(function(){window.location.href='
+            . json_encode('patient_profile.php?id=' . rawurlencode((string) $patient_id), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+            . ';},2000);</script>';
         
-    } catch (Exception $e) {
-        $error = "Failed to record PNC visit: " . $e->getMessage();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($e instanceof InvalidArgumentException) {
+            $error = $e->getMessage();
+        } else {
+            error_log('Postnatal visit request failed: ' . $e->getMessage());
+            $error = 'Could not record the postnatal visit. Please review the details and try again.';
+        }
     }
 }
 ?>
@@ -397,13 +478,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($success): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i>
-                <span><?php echo $success; ?> Redirecting...</span>
+                <span><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?> Redirecting...</span>
             </div>
         <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo $error; ?></span>
+                <span><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></span>
             </div>
         <?php endif; ?>
         
@@ -426,6 +507,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
                 <input type="hidden" name="patient_id" id="patient_id" value="">
             </div>
+            <?php if ($babies): ?>
+                <div class="form-group">
+                    <label for="baby_id">Newborn</label>
+                    <select name="baby_id" id="baby_id" <?php echo count($babies) > 1 ? 'required' : ''; ?>>
+                        <?php if (count($babies) > 1): ?><option value="">-- Select newborn --</option><?php endif; ?>
+                        <?php foreach ($babies as $baby): ?>
+                            <option value="<?php echo (int) $baby['id']; ?>" <?php echo count($babies) === 1 ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars('Baby ' . $baby['birth_order'] . ' · ' . $baby['baby_sex'] . ($baby['baby_weight_kg'] !== null ? ' · ' . $baby['baby_weight_kg'] . ' kg' : ''), ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php elseif ($selected_episode_id): ?>
+                <div class="form-hint">No individual newborn record is linked to this delivery yet.</div>
+            <?php endif; ?>
             
             <?php if (!empty($patients)): ?>
             <div class="info-badge" id="deliveryInfo" style="display: none;">
@@ -667,6 +763,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const option = select.options[select.selectedIndex];
         const patientId = option.getAttribute('data-patient-id');
         const deliveryDate = option.getAttribute('data-delivery-date');
+
+        if (select.value) {
+            window.location.href = 'postnatal_visit.php?episode_id=' + encodeURIComponent(select.value);
+            return;
+        }
         
         document.getElementById('patient_id').value = patientId;
         

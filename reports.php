@@ -5,7 +5,6 @@
 // ============================================
 
 require_once 'config.php';
-require_once 'nav.php';
 requireLogin();
 
 // ============================================
@@ -15,14 +14,30 @@ $export_report = $_GET['export_report'] ?? '';
 $export_tab = $_GET['export_tab'] ?? '';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
+$exportTabs = ['executive_summary', 'anc_register', 'delivery_register', 'pnc_register', 'patient_list'];
+$excelCell = static fn($value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$validExportDate = static function (string $date): bool {
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
+        && checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4));
+};
 
-if ($export_report == 'excel' && $export_tab) {
+if ($export_report === 'excel') {
+    if (
+        !in_array($export_tab, $exportTabs, true)
+        || !$validExportDate($date_from)
+        || !$validExportDate($date_to)
+        || $date_from > $date_to
+    ) {
+        http_response_code(400);
+        exit('Invalid report request.');
+    }
+
     header('Content-Type: application/vnd.ms-excel');
     header('Content-Disposition: attachment; filename="report_' . $export_tab . '_' . date('Y-m-d') . '.xls"');
     
     echo "<html><body>";
-    echo "<h2>Lubaga Hospital MCH System - " . ucwords(str_replace('_', ' ', $export_tab)) . "</h2>";
-    echo "<p>Period: $date_from to $date_to</p>";
+    echo "<h2>Lubaga Hospital MCH System - " . $excelCell(ucwords(str_replace('_', ' ', $export_tab))) . "</h2>";
+    echo "<p>Period: " . $excelCell($date_from) . " to " . $excelCell($date_to) . "</p>";
     echo "<p>Generated: " . date('Y-m-d H:i:s') . "</p>";
     echo "<table border='1'>";
     
@@ -34,13 +49,25 @@ if ($export_report == 'excel' && $export_tab) {
             $deliveries = $pdo->query("SELECT COUNT(*) FROM delivery_records")->fetchColumn();
             $pnc_total = $pdo->query("SELECT COUNT(*) FROM postnatal_visits")->fetchColumn();
             $hiv = $pdo->query("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR','TRRK','TRR+')")->fetchColumn();
+            $screenings = $pdo->prepare("SELECT COUNT(*) FROM screening_results WHERE performed_at BETWEEN ? AND ?");
+            $screenings->execute([$date_from, $date_to]);
+            $referrals = $pdo->prepare("SELECT COUNT(*) FROM referrals WHERE referral_date BETWEEN ? AND ?");
+            $referrals->execute([$date_from, $date_to]);
+            $referralsCompleted = $pdo->prepare("SELECT COUNT(*) FROM referrals WHERE status = 'completed' AND completed_date BETWEEN ? AND ?");
+            $referralsCompleted->execute([$date_from, $date_to]);
+            $childVisits = $pdo->prepare("SELECT COUNT(*) FROM child_health_visits WHERE visit_date BETWEEN ? AND ?");
+            $childVisits->execute([$date_from, $date_to]);
             echo "<tr><th>Metric</th><th>Value</th></tr>";
-            echo "<tr><td>Total Patients</td><td>$total_patients</td></tr>";
-            echo "<tr><td>Active Pregnancies</td><td>$active</td></tr>";
-            echo "<tr><td>Total ANC Visits</td><td>$anc_total</td></tr>";
-            echo "<tr><td>Total Deliveries</td><td>$deliveries</td></tr>";
-            echo "<tr><td>Total PNC Visits</td><td>$pnc_total</td></tr>";
-            echo "<tr><td>HIV Positive Mothers</td><td>$hiv</td></tr>";
+            echo "<tr><td>Total Patients</td><td>" . $excelCell($total_patients) . "</td></tr>";
+            echo "<tr><td>Active Pregnancies</td><td>" . $excelCell($active) . "</td></tr>";
+            echo "<tr><td>Total ANC Visits</td><td>" . $excelCell($anc_total) . "</td></tr>";
+            echo "<tr><td>Total Deliveries</td><td>" . $excelCell($deliveries) . "</td></tr>";
+            echo "<tr><td>Total PNC Visits</td><td>" . $excelCell($pnc_total) . "</td></tr>";
+            echo "<tr><td>HIV Positive Mothers</td><td>" . $excelCell($hiv) . "</td></tr>";
+            echo "<tr><td>Screenings Recorded (Selected Period)</td><td>" . $excelCell($screenings->fetchColumn()) . "</td></tr>";
+            echo "<tr><td>Referrals Initiated (Selected Period)</td><td>" . $excelCell($referrals->fetchColumn()) . "</td></tr>";
+            echo "<tr><td>Referrals Completed (Selected Period)</td><td>" . $excelCell($referralsCompleted->fetchColumn()) . "</td></tr>";
+            echo "<tr><td>Child Health Encounters (Selected Period)</td><td>" . $excelCell($childVisits->fetchColumn()) . "</td></tr>";
             echo "</table>";
             break;
         case 'anc_register':
@@ -48,30 +75,42 @@ if ($export_report == 'excel' && $export_tab) {
             $anc->execute([$date_from, $date_to]);
             echo "<tr><th>Client #</th><th>Name</th><th>Age</th><th>Phone</th><th>Village</th><th>Date</th><th>GA</th><th>Weight</th><th>BP</th><th>HIV</th><th>TT</th><th>Diagnosis</th></tr>";
             foreach ($anc->fetchAll() as $r) {
-                echo "<tr><td>{$r['client_number']}</td><td>{$r['name']}</td><td>{$r['age']}</td><td>{$r['phone']}</td><td>{$r['village']}</td><td>{$r['visit_date']}</td><td>{$r['gestational_age_weeks']}</td><td>{$r['weight_kg']}</td><td>{$r['bp']}</td><td>{$r['woman_hiv_code']}</td><td>{$r['tt_dose_received']}</td><td>{$r['diagnosis']}</td></tr>";
+                echo '<tr><td>' . $excelCell($r['client_number']) . '</td><td>' . $excelCell($r['name']) . '</td><td>' . $excelCell($r['age']) . '</td><td>' . $excelCell($r['phone']) . '</td><td>' . $excelCell($r['village']) . '</td><td>' . $excelCell($r['visit_date']) . '</td><td>' . $excelCell($r['gestational_age_weeks']) . '</td><td>' . $excelCell($r['weight_kg']) . '</td><td>' . $excelCell($r['bp']) . '</td><td>' . $excelCell($r['woman_hiv_code']) . '</td><td>' . $excelCell($r['tt_dose_received']) . '</td><td>' . $excelCell($r['diagnosis']) . '</td></tr>';
             }
             break;
         case 'delivery_register':
-            $del = $pdo->prepare("SELECT dr.ipd_no, dr.delivery_datetime, CONCAT(p.surname,' ',p.first_name) as mother, dr.mode_of_delivery, CONCAT(dr.baby_sex,' (',dr.baby_weight_kg,'kg)') as baby, dr.baby_condition_at_discharge FROM delivery_records dr JOIN pregnancy_episodes pe ON dr.pregnancy_episode_id = pe.id JOIN patients p ON pe.patient_id = p.id WHERE dr.delivery_datetime BETWEEN ? AND ? ORDER BY dr.delivery_datetime DESC");
+            $del = $pdo->prepare(
+                "SELECT dr.ipd_no, dr.delivery_datetime, CONCAT(p.surname,' ',p.first_name) AS mother,
+                        dr.mode_of_delivery, b.birth_order,
+                        IF(b.id IS NULL, dr.baby_sex, b.baby_sex) AS baby_sex,
+                        IF(b.id IS NULL, dr.baby_weight_kg, b.baby_weight_kg) AS baby_weight_kg,
+                        IF(b.id IS NULL, dr.baby_condition_at_discharge, b.condition_at_discharge) AS outcome
+                 FROM delivery_records dr
+                 JOIN pregnancy_episodes pe ON dr.pregnancy_episode_id = pe.id
+                 JOIN patients p ON pe.patient_id = p.id
+                 LEFT JOIN babies b ON b.delivery_record_id = dr.id
+                 WHERE dr.delivery_datetime BETWEEN ? AND ?
+                 ORDER BY dr.delivery_datetime DESC, b.birth_order"
+            );
             $del->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
-            echo "<tr><th>IPD #</th><th>Date</th><th>Mother</th><th>Mode</th><th>Baby</th><th>Outcome</th></tr>";
+            echo "<tr><th>IPD #</th><th>Date</th><th>Mother</th><th>Mode</th><th>Baby</th><th>Sex</th><th>Weight</th><th>Outcome</th></tr>";
             foreach ($del->fetchAll() as $r) {
-                echo "<tr><td>{$r['ipd_no']}</td><td>{$r['delivery_datetime']}</td><td>{$r['mother']}</td><td>{$r['mode_of_delivery']}</td><td>{$r['baby']}</td><td>{$r['baby_condition_at_discharge']}</td></tr>";
+                echo '<tr><td>' . $excelCell($r['ipd_no']) . '</td><td>' . $excelCell($r['delivery_datetime']) . '</td><td>' . $excelCell($r['mother']) . '</td><td>' . $excelCell($r['mode_of_delivery']) . '</td><td>' . $excelCell($r['birth_order'] ? 'Baby ' . $r['birth_order'] : 'Baby') . '</td><td>' . $excelCell($r['baby_sex']) . '</td><td>' . $excelCell($r['baby_weight_kg']) . '</td><td>' . $excelCell($r['outcome']) . '</td></tr>';
             }
             break;
         case 'pnc_register':
-            $pnc = $pdo->prepare("SELECT pe.client_number, CONCAT(p.surname,' ',p.first_name) as mother, pv.visit_date, pv.visit_timing, pv.mother_weight_kg, pv.baby_weight_kg, pv.dbs_test_result FROM postnatal_visits pv JOIN pregnancy_episodes pe ON pv.pregnancy_episode_id = pe.id JOIN patients p ON pe.patient_id = p.id WHERE pv.visit_date BETWEEN ? AND ? ORDER BY pv.visit_date DESC");
+            $pnc = $pdo->prepare("SELECT pe.client_number, CONCAT(p.surname,' ',p.first_name) as mother, pv.visit_date, pv.visit_timing, pv.mother_weight_kg, pv.baby_weight_kg, pv.dbs_test_result, b.birth_order FROM postnatal_visits pv JOIN pregnancy_episodes pe ON pv.pregnancy_episode_id = pe.id JOIN patients p ON pe.patient_id = p.id LEFT JOIN babies b ON b.id = pv.baby_id WHERE pv.visit_date BETWEEN ? AND ? ORDER BY pv.visit_date DESC");
             $pnc->execute([$date_from, $date_to]);
-            echo "<tr><th>Client #</th><th>Mother</th><th>Date</th><th>Timing</th><th>Mother Wt</th><th>Baby Wt</th><th>DBS</th></tr>";
+            echo "<tr><th>Client #</th><th>Mother</th><th>Date</th><th>Timing</th><th>Baby</th><th>Mother Wt</th><th>Baby Wt</th><th>DBS</th></tr>";
             foreach ($pnc->fetchAll() as $r) {
-                echo "<tr><td>{$r['client_number']}</td><td>{$r['mother']}</td><td>{$r['visit_date']}</td><td>{$r['visit_timing']}</td><td>{$r['mother_weight_kg']}</td><td>{$r['baby_weight_kg']}</td><td>{$r['dbs_test_result']}</td></tr>";
+                echo '<tr><td>' . $excelCell($r['client_number']) . '</td><td>' . $excelCell($r['mother']) . '</td><td>' . $excelCell($r['visit_date']) . '</td><td>' . $excelCell($r['visit_timing']) . '</td><td>' . $excelCell($r['birth_order'] ? 'Baby ' . $r['birth_order'] : '') . '</td><td>' . $excelCell($r['mother_weight_kg']) . '</td><td>' . $excelCell($r['baby_weight_kg']) . '</td><td>' . $excelCell($r['dbs_test_result']) . '</td></tr>';
             }
             break;
         case 'patient_list':
             $patients = $pdo->query("SELECT p.surname, p.first_name, p.nin, p.age, p.phone, p.village, pe.client_number FROM patients p LEFT JOIN pregnancy_episodes pe ON p.id = pe.patient_id AND pe.status = 'active' ORDER BY p.surname")->fetchAll();
             echo "<tr><th>Client #</th><th>Name</th><th>NIN</th><th>Age</th><th>Phone</th><th>Village</th></tr>";
             foreach ($patients as $p) {
-                echo "<tr><td>{$p['client_number']}</td><td>{$p['surname']} {$p['first_name']}</td><td>{$p['nin']}</td><td>{$p['age']}</td><td>{$p['phone']}</td><td>{$p['village']}</td></tr>";
+                echo '<tr><td>' . $excelCell($p['client_number']) . '</td><td>' . $excelCell($p['surname'] . ' ' . $p['first_name']) . '</td><td>' . $excelCell($p['nin']) . '</td><td>' . $excelCell($p['age']) . '</td><td>' . $excelCell($p['phone']) . '</td><td>' . $excelCell($p['village']) . '</td></tr>';
             }
             break;
     }
@@ -101,9 +140,28 @@ $total_anc = $pdo->query("SELECT COUNT(*) FROM anc_visits")->fetchColumn();
 $total_deliveries = $pdo->query("SELECT COUNT(*) FROM delivery_records")->fetchColumn();
 $total_pnc = $pdo->query("SELECT COUNT(*) FROM postnatal_visits")->fetchColumn();
 $hiv_positive = $pdo->query("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR','TRRK','TRR+')")->fetchColumn();
+$continuityStmt = $pdo->prepare(
+    "SELECT
+        (SELECT COUNT(*) FROM screening_results WHERE performed_at BETWEEN :screen_start AND :screen_end) AS screenings,
+        (SELECT COUNT(*) FROM referrals WHERE referral_date BETWEEN :ref_start AND :ref_end) AS referrals,
+        (SELECT COUNT(*) FROM referrals WHERE status = 'completed' AND completed_date BETWEEN :completed_start AND :completed_end) AS referrals_completed,
+        (SELECT COUNT(*) FROM child_health_visits WHERE visit_date BETWEEN :child_start AND :child_end) AS child_visits,
+        (SELECT COUNT(*) FROM referrals WHERE followup_date < CURDATE() AND status IN ('initiated', 'accepted', 'not_completed')) AS overdue_referrals"
+);
+$continuityStmt->execute([
+    ':screen_start' => $date_from, ':screen_end' => $date_to,
+    ':ref_start' => $date_from, ':ref_end' => $date_to,
+    ':completed_start' => $date_from, ':completed_end' => $date_to,
+    ':child_start' => $date_from, ':child_end' => $date_to,
+]);
+$continuityMetrics = $continuityStmt->fetch() ?: [
+    'screenings' => 0, 'referrals' => 0, 'referrals_completed' => 0,
+    'child_visits' => 0, 'overdue_referrals' => 0,
+];
 
 $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_number FROM patients p LEFT JOIN pregnancy_episodes pe ON p.id = pe.patient_id AND pe.status = 'active' ORDER BY p.surname LIMIT 200")->fetchAll();
 ?>
+<?php require_once 'nav.php'; ?>
 
 <style>
     /* Reports Page Styles - Following System Design */
@@ -572,7 +630,7 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             <button class="tab-btn <?php echo $active_tab == 'pnc_register' ? 'active' : ''; ?>" onclick="switchTab('pnc_register')">💚 PNC Register</button>
             <button class="tab-btn <?php echo $active_tab == 'fp_uptake' ? 'active' : ''; ?>" onclick="switchTab('fp_uptake')">👪 Family Planning</button>
             <button class="tab-btn <?php echo $active_tab == 'appointments' ? 'active' : ''; ?>" onclick="switchTab('appointments')">📅 Appointments</button>
-            <button class="tab-btn <?php echo $active_tab == 'missed_visits' ? 'active' : ''; ?>" onclick="switchTab('missed_visits')">⚠️ Missed Visits</button>
+            <button class="tab-btn <?php echo $active_tab == 'missed_visits' ? 'active' : ''; ?>" onclick="switchTab('missed_visits')">⚠️ Missed Appointments</button>
         </div>
     </div>
     
@@ -641,9 +699,15 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                         <tr><td>Total PNC Visits</td><td><strong><?php echo number_format($total_pnc); ?></strong></td></tr>
                         <tr><td>HIV Positive Mothers</td><td><strong><?php echo $hiv_positive; ?></strong></td></tr>
                         <tr><td>Early Booking Rate (&lt;12 weeks)</td><td><strong><?php echo $early_rate; ?>%</strong></td></tr>
+                        <tr><td>Screening records (selected period)</td><td><strong><?php echo (int) $continuityMetrics['screenings']; ?></strong></td></tr>
+                        <tr><td>Referrals recorded (selected period)</td><td><strong><?php echo (int) $continuityMetrics['referrals']; ?></strong></td></tr>
+                        <tr><td>Referrals completed in period</td><td><strong><?php echo (int) $continuityMetrics['referrals_completed']; ?></strong></td></tr>
+                        <tr><td>Child health encounters (selected period)</td><td><strong><?php echo (int) $continuityMetrics['child_visits']; ?></strong></td></tr>
+                        <tr><td>Referrals past planned follow-up</td><td><strong><?php echo (int) $continuityMetrics['overdue_referrals']; ?></strong></td></tr>
                     </tbody>
                 </table>
             </div>
+            <p class="text-muted" style="margin-top:14px">Continuity metrics count records, not clinical outcomes. Use the <a href="screenings.php">screening register</a>, <a href="referrals.php">referral tracking</a>, <a href="child_followup.php">child follow-up</a>, and <a href="resource_planning.php">resource planning</a> pages to review the underlying data.</p>
             
             <?php if (!empty($muac)): ?>
             <div class="table-wrapper" style="margin-top: 20px;">
@@ -818,6 +882,12 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                             $delivery = $pdo->prepare("SELECT * FROM delivery_records WHERE pregnancy_episode_id = ?");
                             $delivery->execute([$ep['id']]);
                             $delivery_data = $delivery->fetch();
+                            $babies = [];
+                            if ($delivery_data) {
+                                $baby_stmt = $pdo->prepare('SELECT * FROM babies WHERE delivery_record_id = ? ORDER BY birth_order');
+                                $baby_stmt->execute([$delivery_data['id']]);
+                                $babies = $baby_stmt->fetchAll();
+                            }
                         ?>
                             <tr style="background: var(--bg-body);"><td colspan="2"><strong>🤰 PREGNANCY: <?php echo $ep['client_number']; ?> (<?php echo ucfirst($ep['status']); ?>)</strong></td></tr>
                             <tr><td><strong>Gravida / Parity</strong></td><td><?php echo $ep['gravida']; ?> / <?php echo $ep['parity']; ?></td></tr>
@@ -855,16 +925,22 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                             <tr><td><strong>Delivery Date</strong></td><td><?php echo formatDateTimeDMY($delivery_data['delivery_datetime']); ?></td></tr>
                             <tr><td><strong>Mode of Delivery</strong></td><td><?php echo str_replace('_', ' ', $delivery_data['mode_of_delivery']); ?></td></tr>
                             <tr><td><strong>Term/Preterm</strong></td><td><?php echo $delivery_data['term_preterm'] == 'T' ? 'Term (≥37 weeks)' : 'Preterm (<37 weeks)'; ?> (<?php echo $delivery_data['gestation_weeks']; ?> weeks)</td></tr>
-                            <tr><td><strong>Baby Sex / Weight</strong></td><td><?php echo $delivery_data['baby_sex'] == 'M' ? 'Male' : 'Female'; ?> / <?php echo $delivery_data['baby_weight_kg']; ?> kg</td></tr>
-                            <tr><td><strong>Apgar Score</strong></td><td><?php echo $delivery_data['apgar_1min'] . ' / ' . $delivery_data['apgar_5min']; ?> (1/5 min)</td></tr>
-                            <tr><td><strong>Baby Outcome</strong></td><td><?php 
-                                $outcome = $delivery_data['baby_condition_at_discharge'];
-                                if ($outcome == 'AL') echo '<span class="badge-success">Alive</span>';
-                                elseif ($outcome == 'MSB') echo '<span class="badge-danger">Macerated Still Birth</span>';
-                                elseif ($outcome == 'FSB') echo '<span class="badge-danger">Fresh Still Birth</span>';
-                                elseif ($outcome == 'NND') echo '<span class="badge-danger">Neonatal Death</span>';
-                                else echo $outcome;
-                            ?></td></tr>
+                            <?php if ($babies): foreach ($babies as $baby): ?>
+                                <tr><td><strong>Baby <?php echo (int) $baby['birth_order']; ?> Sex / Weight</strong></td><td><?php echo $baby['baby_sex'] === 'M' ? 'Male' : 'Female'; ?> / <?php echo htmlspecialchars($baby['baby_weight_kg'] ?? '—', ENT_QUOTES, 'UTF-8'); ?> kg</td></tr>
+                                <tr><td><strong>Baby <?php echo (int) $baby['birth_order']; ?> Apgar Score</strong></td><td><?php echo htmlspecialchars(($baby['apgar_1min'] ?? '—') . ' / ' . ($baby['apgar_5min'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?> (1/5 min)</td></tr>
+                                <tr><td><strong>Baby <?php echo (int) $baby['birth_order']; ?> Outcome</strong></td><td><?php echo htmlspecialchars($baby['condition_at_discharge'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td></tr>
+                            <?php endforeach; else: ?>
+                                <tr><td><strong>Baby Sex / Weight</strong></td><td><?php echo $delivery_data['baby_sex'] == 'M' ? 'Male' : 'Female'; ?> / <?php echo $delivery_data['baby_weight_kg']; ?> kg</td></tr>
+                                <tr><td><strong>Apgar Score</strong></td><td><?php echo $delivery_data['apgar_1min'] . ' / ' . $delivery_data['apgar_5min']; ?> (1/5 min)</td></tr>
+                                <tr><td><strong>Baby Outcome</strong></td><td><?php
+                                    $outcome = $delivery_data['baby_condition_at_discharge'];
+                                    if ($outcome === 'AL') echo '<span class="badge-success">Alive</span>';
+                                    elseif ($outcome === 'MSB') echo '<span class="badge-danger">Macerated Still Birth</span>';
+                                    elseif ($outcome === 'FSB') echo '<span class="badge-danger">Fresh Still Birth</span>';
+                                    elseif ($outcome === 'NND') echo '<span class="badge-danger">Neonatal Death</span>';
+                                    else echo htmlspecialchars($outcome ?? '—', ENT_QUOTES, 'UTF-8');
+                                ?></td></tr>
+                            <?php endif; ?>
                             <?php endif; ?>
                         <?php endforeach; ?>
                     </table>
@@ -960,14 +1036,28 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             
         <?php elseif ($active_tab == 'delivery_register'): ?>
             <?php
-            $del_stmt = $pdo->prepare("SELECT dr.ipd_no, DATE_FORMAT(dr.delivery_datetime, '%d %b %Y %H:%i') as delivery_date, CONCAT(p.surname, ' ', p.first_name) as mother_name, p.age, p.phone, p.village, pe.client_number, dr.mode_of_delivery, CONCAT(dr.baby_sex, ' (', dr.baby_weight_kg, 'kg)') as baby, CONCAT(dr.apgar_1min, '/', dr.apgar_5min) as apgar, dr.baby_condition_at_discharge as outcome FROM delivery_records dr JOIN pregnancy_episodes pe ON dr.pregnancy_episode_id = pe.id JOIN patients p ON pe.patient_id = p.id WHERE dr.delivery_datetime BETWEEN ? AND ? ORDER BY dr.delivery_datetime DESC");
+            $del_stmt = $pdo->prepare(
+                "SELECT dr.ipd_no, DATE_FORMAT(dr.delivery_datetime, '%d %b %Y %H:%i') AS delivery_date,
+                        CONCAT(p.surname, ' ', p.first_name) AS mother_name, p.age, p.phone, p.village,
+                        pe.client_number, dr.mode_of_delivery, b.birth_order,
+                        IF(b.id IS NULL, dr.baby_sex, b.baby_sex) AS baby_sex,
+                        IF(b.id IS NULL, dr.baby_weight_kg, b.baby_weight_kg) AS baby_weight_kg,
+                        IF(b.id IS NULL, CONCAT(dr.apgar_1min, '/', dr.apgar_5min), CONCAT(b.apgar_1min, '/', b.apgar_5min)) AS apgar,
+                        IF(b.id IS NULL, dr.baby_condition_at_discharge, b.condition_at_discharge) AS outcome
+                 FROM delivery_records dr
+                 JOIN pregnancy_episodes pe ON dr.pregnancy_episode_id = pe.id
+                 JOIN patients p ON pe.patient_id = p.id
+                 LEFT JOIN babies b ON b.delivery_record_id = dr.id
+                 WHERE dr.delivery_datetime BETWEEN ? AND ?
+                 ORDER BY dr.delivery_datetime DESC, b.birth_order"
+            );
             $del_stmt->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
             $delivery_data = $del_stmt->fetchAll();
             ?>
             <div class="report-header">
                 <div>
                     <div class="report-title-modern">Delivery Register</div>
-                    <div class="report-subtitle-modern">Period: <?php echo formatDateDMY($date_from); ?> to <?php echo formatDateDMY($date_to); ?> - Total: <?php echo count($delivery_data); ?> deliveries</div>
+                    <div class="report-subtitle-modern">Period: <?php echo formatDateDMY($date_from); ?> to <?php echo formatDateDMY($date_to); ?> - Total: <?php echo count($delivery_data); ?> newborn(s)</div>
                 </div>
             </div>
             <div class="table-wrapper">
@@ -984,7 +1074,7 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                             <td><?php echo htmlspecialchars($r['village'] ?? '-'); ?></td>
                             <td><?php echo htmlspecialchars($r['client_number']); ?></td>
                             <td><?php echo str_replace('_', ' ', $r['mode_of_delivery']); ?></td>
-                            <td><?php echo $r['baby']; ?></td>
+                            <td><?php echo $r['birth_order'] ? 'Baby ' . (int) $r['birth_order'] . ' · ' : ''; ?><?php echo htmlspecialchars($r['baby_sex'] . ' (' . ($r['baby_weight_kg'] ?? '—') . ' kg)', ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo $r['apgar']; ?></td>
                             <td class="<?php echo $r['outcome'] != 'AL' ? 'badge-danger' : 'badge-success'; ?>"><?php echo $r['outcome']; ?></td>
                         </tr>
@@ -995,8 +1085,29 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             
         <?php elseif ($active_tab == 'perinatal_outcomes'): ?>
             <?php
-            $out_stmt = $pdo->prepare("SELECT baby_condition_at_discharge as outcome, COUNT(*) as count FROM delivery_records WHERE delivery_datetime BETWEEN ? AND ? GROUP BY baby_condition_at_discharge");
-            $out_stmt->execute([$date_from . ' 00:00:00', $date_to . ' 23:59:59']);
+            $out_stmt = $pdo->prepare(
+                "SELECT outcome, COUNT(*) AS count
+                 FROM (
+                    SELECT b.condition_at_discharge AS outcome
+                    FROM babies b
+                    JOIN delivery_records dr ON dr.id = b.delivery_record_id
+                    WHERE dr.delivery_datetime BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT dr.baby_condition_at_discharge AS outcome
+                    FROM delivery_records dr
+                    WHERE dr.delivery_datetime BETWEEN ? AND ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM babies b WHERE b.delivery_record_id = dr.id
+                      )
+                 ) outcomes
+                 GROUP BY outcome"
+            );
+            $out_stmt->execute([
+                $date_from . ' 00:00:00',
+                $date_to . ' 23:59:59',
+                $date_from . ' 00:00:00',
+                $date_to . ' 23:59:59',
+            ]);
             $outcome_data = $out_stmt->fetchAll();
             $total_outcomes = array_sum(array_column($outcome_data, 'count'));
             ?>
@@ -1086,18 +1197,29 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             
         <?php elseif ($active_tab == 'appointments'): ?>
             <?php
-            $app_stmt = $pdo->query("SELECT pe.client_number, CONCAT(p.surname, ' ', p.first_name) as patient_name, p.phone, p.village, DATE_FORMAT(MAX(av.visit_date), '%d %b %Y') as last_visit, DATE_FORMAT(DATE_ADD(MAX(av.visit_date), INTERVAL 28 DAY), '%d %b %Y') as next_visit, DATEDIFF(DATE_ADD(MAX(av.visit_date), INTERVAL 28 DAY), CURDATE()) as days_until FROM patients p JOIN pregnancy_episodes pe ON p.id = pe.patient_id LEFT JOIN anc_visits av ON av.pregnancy_episode_id = pe.id WHERE pe.status = 'active' GROUP BY p.id, pe.id HAVING next_visit IS NOT NULL AND days_until BETWEEN 0 AND 14 ORDER BY days_until ASC");
+            $app_stmt = $pdo->prepare(
+                "SELECT pe.client_number, CONCAT(p.surname, ' ', p.first_name) AS patient_name,
+                        p.phone, p.village, a.scheduled_date, a.scheduled_time,
+                        at.label AS appointment_type
+                 FROM appointments a
+                 JOIN patients p ON p.id = a.patient_id
+                 LEFT JOIN pregnancy_episodes pe ON pe.id = a.pregnancy_episode_id
+                 JOIN appointment_types at ON at.code = a.appointment_type
+                 WHERE a.status = 'scheduled' AND a.scheduled_date BETWEEN ? AND ?
+                 ORDER BY a.scheduled_date, a.scheduled_time, p.surname"
+            );
+            $app_stmt->execute([$date_from, $date_to]);
             $appointment_data = $app_stmt->fetchAll();
             ?>
             <div class="report-header">
                 <div>
                     <div class="report-title-modern">Upcoming Appointments</div>
-                    <div class="report-subtitle-modern">Patients due in next 14 days - Total: <?php echo count($appointment_data); ?></div>
+                    <div class="report-subtitle-modern">Scheduled appointments in selected period - Total: <?php echo count($appointment_data); ?></div>
                 </div>
             </div>
             <div class="table-wrapper">
                 <table class="data-table-modern">
-                    <thead><tr><th>Client #</th><th>Name</th><th>Phone</th><th>Village</th><th>Last Visit</th><th>Next ANC</th><th>Days</th></tr></thead>
+                    <thead><tr><th>Client #</th><th>Name</th><th>Phone</th><th>Village</th><th>Appointment</th><th>Date / Time</th></tr></thead>
                     <tbody>
                         <?php foreach ($appointment_data as $r): ?>
                         <tr>
@@ -1105,9 +1227,8 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                             <td><strong><?php echo htmlspecialchars($r['patient_name']); ?></strong></td>
                             <td><?php echo htmlspecialchars($r['phone'] ?? '-'); ?></td>
                             <td><?php echo htmlspecialchars($r['village'] ?? '-'); ?></td>
-                            <td><?php echo $r['last_visit']; ?></td>
-                            <td><?php echo $r['next_visit']; ?></td>
-                            <td class="<?php echo $r['days_until'] <= 3 ? 'badge-danger' : 'badge-warning'; ?>"><?php echo $r['days_until']; ?> days</td>
+                            <td><?php echo htmlspecialchars($r['appointment_type']); ?></td>
+                            <td><?php echo htmlspecialchars(formatDate($r['scheduled_date']) . ($r['scheduled_time'] ? ' ' . substr($r['scheduled_time'], 0, 5) : '')); ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -1116,27 +1237,38 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             
         <?php elseif ($active_tab == 'missed_visits'): ?>
             <?php
-            $miss_stmt = $pdo->query("SELECT pe.client_number, CONCAT(p.surname, ' ', p.first_name) as patient_name, p.phone, p.village, DATE_FORMAT(MAX(av.visit_date), '%d %b %Y') as last_visit, DATE_FORMAT(DATE_ADD(MAX(av.visit_date), INTERVAL 28 DAY), '%d %b %Y') as expected_visit, DATEDIFF(CURDATE(), DATE_ADD(MAX(av.visit_date), INTERVAL 28 DAY)) as days_overdue FROM patients p JOIN pregnancy_episodes pe ON p.id = pe.patient_id LEFT JOIN anc_visits av ON av.pregnancy_episode_id = pe.id WHERE pe.status = 'active' GROUP BY p.id, pe.id HAVING expected_visit IS NOT NULL AND expected_visit < CURDATE() AND days_overdue > 7 ORDER BY days_overdue DESC");
+            $miss_stmt = $pdo->prepare(
+                "SELECT pe.client_number, CONCAT(p.surname, ' ', p.first_name) AS patient_name,
+                        p.phone, p.village, a.scheduled_date, a.scheduled_time,
+                        at.label AS appointment_type, DATEDIFF(CURDATE(), a.scheduled_date) AS days_overdue
+                 FROM appointments a
+                 JOIN patients p ON p.id = a.patient_id
+                 LEFT JOIN pregnancy_episodes pe ON pe.id = a.pregnancy_episode_id
+                 JOIN appointment_types at ON at.code = a.appointment_type
+                 WHERE a.status = 'missed' AND a.scheduled_date BETWEEN ? AND ?
+                 ORDER BY a.scheduled_date"
+            );
+            $miss_stmt->execute([$date_from, $date_to]);
             $missed_data = $miss_stmt->fetchAll();
             ?>
             <div class="report-header">
                 <div>
-                    <div class="report-title-modern">Missed Visits / Defaulters</div>
-                    <div class="report-subtitle-modern">Patients who missed appointments - Total: <?php echo count($missed_data); ?></div>
+                    <div class="report-title-modern">Missed Appointments</div>
+                    <div class="report-subtitle-modern">Appointments marked missed in selected period - Total: <?php echo count($missed_data); ?></div>
                 </div>
             </div>
             <?php if (count($missed_data) > 0): ?>
             <div class="insights-box-modern" style="background:#ffebee; border-left-color:#c62828;">
                 <div><strong>🚨 Urgent Follow-up Required</strong></div>
                 <div class="insights-list-modern">
-                    <span class="insight-tag-modern">⚠️ <?php echo count($missed_data); ?> patients missed appointments</span>
+                    <span class="insight-tag-modern">⚠️ <?php echo count($missed_data); ?> appointments were marked missed</span>
                     <span class="insight-tag-modern">📞 Immediate contact recommended</span>
                 </div>
             </div>
             <?php endif; ?>
             <div class="table-wrapper">
                 <table class="data-table-modern">
-                    <thead><tr><th>Client #</th><th>Name</th><th>Phone</th><th>Village</th><th>Last Visit</th><th>Expected</th><th>Overdue</th></tr></thead>
+                    <thead><tr><th>Client #</th><th>Name</th><th>Phone</th><th>Village</th><th>Appointment</th><th>Scheduled</th><th>Days overdue</th></tr></thead>
                     <tbody>
                         <?php foreach ($missed_data as $r): ?>
                         <tr style="background:#ffebee;">
@@ -1144,8 +1276,8 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
                             <td><strong><?php echo htmlspecialchars($r['patient_name']); ?></strong></td>
                             <td><?php echo htmlspecialchars($r['phone'] ?? '-'); ?></td>
                             <td><?php echo htmlspecialchars($r['village'] ?? '-'); ?></td>
-                            <td><?php echo $r['last_visit']; ?></td>
-                            <td><?php echo $r['expected_visit']; ?></td>
+                            <td><?php echo htmlspecialchars($r['appointment_type']); ?></td>
+                            <td><?php echo htmlspecialchars(formatDate($r['scheduled_date']) . ($r['scheduled_time'] ? ' ' . substr($r['scheduled_time'], 0, 5) : '')); ?></td>
                             <td class="badge-danger"><?php echo $r['days_overdue']; ?> days overdue</td>
                         </tr>
                         <?php endforeach; ?>

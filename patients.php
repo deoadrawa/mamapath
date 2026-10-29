@@ -13,7 +13,10 @@ requireLogin();
 $search = $_GET['search'] ?? '';
 $filter_status = $_GET['status'] ?? 'all';
 $sort_by = $_GET['sort'] ?? 'name';
-$sort_order = $_GET['order'] ?? 'ASC';
+$sort_order = strtoupper($_GET['order'] ?? 'ASC');
+if (!in_array($sort_order, ['ASC', 'DESC'], true)) {
+    $sort_order = 'ASC';
+}
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $limit = 15;
 $offset = ($page - 1) * $limit;
@@ -33,7 +36,11 @@ if ($filter_status === 'active') {
     $where_clauses[] = "pe.id IS NULL";
 } elseif ($filter_status === 'overdue') {
     $where_clauses[] = "pe.status = 'active'";
-    $where_clauses[] = "(SELECT MAX(visit_date) FROM anc_visits WHERE pregnancy_episode_id = pe.id) < DATE_SUB(CURDATE(), INTERVAL 35 DAY) OR (SELECT MAX(visit_date) FROM anc_visits WHERE pregnancy_episode_id = pe.id) IS NULL";
+    $where_clauses[] = "COALESCE(
+        (SELECT scheduled_date FROM appointments WHERE pregnancy_episode_id = pe.id AND appointment_type = 'ANC' AND status = 'scheduled' AND scheduled_date >= CURDATE() ORDER BY scheduled_date LIMIT 1),
+        (SELECT next_visit_date FROM anc_visits WHERE pregnancy_episode_id = pe.id ORDER BY visit_date DESC, id DESC LIMIT 1),
+        NULL
+    ) < CURDATE()";
 }
 
 $where_sql = implode(" AND ", $where_clauses);
@@ -80,7 +87,11 @@ $sql = "SELECT
             (SELECT MAX(visit_date) FROM anc_visits WHERE pregnancy_episode_id = pe.id) as last_anc_date,
             (SELECT MAX(visit_number) FROM anc_visits WHERE pregnancy_episode_id = pe.id) as last_visit_number,
             (SELECT COUNT(*) FROM anc_visits WHERE pregnancy_episode_id = pe.id) as anc_count,
-            (SELECT DATE_ADD(MAX(visit_date), INTERVAL 28 DAY) FROM anc_visits WHERE pregnancy_episode_id = pe.id) as next_anc_date,
+            COALESCE(
+                (SELECT scheduled_date FROM appointments WHERE pregnancy_episode_id = pe.id AND appointment_type = 'ANC' AND status = 'scheduled' AND scheduled_date >= CURDATE() ORDER BY scheduled_date LIMIT 1),
+                (SELECT next_visit_date FROM anc_visits WHERE pregnancy_episode_id = pe.id ORDER BY visit_date DESC, id DESC LIMIT 1),
+                NULL
+            ) as next_anc_date,
             (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM anc_visits WHERE pregnancy_episode_id = pe.id AND complications IS NOT NULL AND complications != 'Nil' AND complications != '') as has_risk
         FROM patients p 
         LEFT JOIN pregnancy_episodes pe ON p.id = pe.patient_id AND pe.status = 'active'
@@ -740,9 +751,13 @@ foreach ($patients as $p) {
                                 <a href="delivery_admission.php?episode_id=<?php echo $patient['episode_id']; ?>" class="action-icon" title="Record Delivery">
                                     <i class="fas fa-birthday-cake"></i>
                                 </a>
+                            <?php else: ?>
+                                <a href="register_patient.php?patient_id=<?php echo (int) $patient['id']; ?>" class="action-icon" title="Register a new pregnancy for this patient">
+                                    <i class="fas fa-person-pregnant"></i>
+                                </a>
                             <?php endif; ?>
                             <?php if (!empty($patient['phone'])): ?>
-                                <a href="tel:<?php echo $patient['phone']; ?>" class="action-icon" title="Call Patient">
+                                <a href="tel:<?php echo htmlspecialchars($patient['phone'], ENT_QUOTES, 'UTF-8'); ?>" class="action-icon" title="Call Patient">
                                     <i class="fas fa-phone"></i>
                                 </a>
                             <?php endif; ?>

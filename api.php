@@ -9,13 +9,32 @@ require_once 'config.php';
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
 
-// Check authentication for non-public endpoints
-$public_endpoints = ['login', 'check_username'];
+// Only login is available before authentication.
+$public_endpoints = ['login'];
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
-if (!in_array($action, $public_endpoints) && (!isset($_SESSION['user_id']) || !$_SESSION['user_id'])) {
+if (!in_array($action, $public_endpoints, true) && !refreshCurrentUserSession($pdo)) {
+    http_response_code(401);
     echo json_encode(['success' => false, 'error' => 'Unauthorized. Please login.']);
     exit;
+}
+
+$postActions = ['login', 'update_patient', 'delete_patient', 'save_anc_visit', 'logout'];
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if (in_array($action, $postActions, true) !== ($method === 'POST')) {
+    http_response_code(405);
+    header('Allow: ' . (in_array($action, $postActions, true) ? 'POST' : 'GET'));
+    echo json_encode(['success' => false, 'error' => 'Method not allowed']);
+    exit;
+}
+
+if (in_array($action, ['update_patient', 'delete_patient', 'save_anc_visit', 'logout'], true)) {
+    $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+    if (!verifyCSRFToken($csrfToken)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Invalid or expired request token']);
+        exit;
+    }
 }
 
 try {
@@ -56,7 +75,8 @@ try {
             break;
             
         case 'get_all_patients':
-            $limit = $_GET['limit'] ?? 50;
+            $limit = filter_var($_GET['limit'] ?? 50, FILTER_VALIDATE_INT);
+            $limit = $limit === false ? 50 : max(1, min($limit, 200));
             $stmt = $pdo->prepare("SELECT p.*, pe.client_number, pe.status as pregnancy_status 
                                    FROM patients p 
                                    LEFT JOIN pregnancy_episodes pe ON p.id = pe.patient_id AND pe.status = 'active'
@@ -97,7 +117,12 @@ try {
             break;
             
         case 'delete_patient':
-            $id = $_GET['id'] ?? 0;
+            $id = filter_var($_POST['id'] ?? $_GET['id'] ?? 0, FILTER_VALIDATE_INT);
+            if ($id === false || $id < 1) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'Valid patient ID required']);
+                break;
+            }
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM pregnancy_episodes WHERE patient_id = :id");
             $stmt->execute([':id' => $id]);
             if ($stmt->fetchColumn() > 0) {
@@ -259,6 +284,7 @@ try {
             }
             $user = verifyLogin($pdo, $data['username'], $data['password']);
             if ($user) {
+                session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['user_fullname'] = $user['full_name'];
@@ -286,6 +312,7 @@ try {
             break;
             
         case 'logout':
+            $_SESSION = [];
             session_destroy();
             echo json_encode(['success' => true, 'message' => 'Logged out successfully']);
             break;
@@ -310,7 +337,9 @@ try {
         default:
             echo json_encode(['success' => false, 'error' => 'Invalid action: ' . $action]);
     }
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (Throwable $e) {
+    error_log('API request failed (' . $action . '): ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'The request could not be completed.']);
 }
 ?>

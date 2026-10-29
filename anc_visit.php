@@ -26,7 +26,7 @@ $patients = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.id as episode_
 if (isset($_GET['episode_id'])) {
     $stmt = $pdo->prepare("SELECT p.*, pe.* FROM patients p 
                            JOIN pregnancy_episodes pe ON p.id = pe.patient_id 
-                           WHERE pe.id = :eid");
+                           WHERE pe.id = :eid AND pe.status = 'active'");
     $stmt->execute([':eid' => $_GET['episode_id']]);
     $patient_info = $stmt->fetch();
     
@@ -42,15 +42,41 @@ if (isset($_GET['episode_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
-        $episode_id = $_POST['episode_id'];
-        $visit_number = $_POST['visit_number'];
-        $visit_date = $_POST['visit_date'];
+        $pdo->beginTransaction();
+        $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
+        $visit_date = $_POST['visit_date'] ?? '';
+        $validDate = static function (string $date): bool {
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
+                && checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4));
+        };
+        $nextVisitDate = empty($_POST['next_visit_date']) ? null : $_POST['next_visit_date'];
+        if (!$validDate($visit_date) || $visit_date > date('Y-m-d')) {
+            throw new InvalidArgumentException('Enter a valid ANC visit date that is not in the future.');
+        }
+        if ($nextVisitDate !== null && (!$validDate($nextVisitDate) || $nextVisitDate < $visit_date)) {
+            throw new InvalidArgumentException('The next ANC date must be valid and on or after this visit date.');
+        }
         
-        // Get LMP and calculate GA
-        $stmt = $pdo->prepare("SELECT lmp FROM pregnancy_episodes WHERE id = :id");
+        $stmt = $pdo->prepare(
+            "SELECT pe.lmp, p.id AS patient_id
+             FROM pregnancy_episodes pe
+             JOIN patients p ON p.id = pe.patient_id
+             WHERE pe.id = :id AND pe.status = 'active'
+             FOR UPDATE"
+        );
         $stmt->execute([':id' => $episode_id]);
-        $lmp = $stmt->fetch()['lmp'];
+        $episode = $stmt->fetch();
+        if ($episode_id === false || $episode_id < 1 || !$episode) {
+            throw new InvalidArgumentException('Choose an active pregnancy episode.');
+        }
+        $lmp = $episode['lmp'];
+        if ($lmp && $visit_date < $lmp) {
+            throw new InvalidArgumentException('The ANC visit date cannot be before the recorded LMP.');
+        }
         $ga = calculateGestationalAge($lmp, $visit_date);
+        $visitStmt = $pdo->prepare('SELECT COALESCE(MAX(visit_number), 0) + 1 FROM anc_visits WHERE pregnancy_episode_id = :id');
+        $visitStmt->execute([':id' => $episode_id]);
+        $visit_number = (int) $visitStmt->fetchColumn();
         
         $serial_no = getNextSerialNo($pdo, 'anc_visits', 'visit_date');
         $muac_cm = !empty($_POST['muac_cm']) ? floatval($_POST['muac_cm']) : null;
@@ -85,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':serial_no' => $serial_no,
             ':visit_number' => $visit_number,
             ':visit_date' => $visit_date,
-            ':next_visit' => emptyToNull($_POST['next_visit_date'] ?? null),
+            ':next_visit' => $nextVisitDate,
             ':ga' => $ga,
             ':weight' => !empty($_POST['weight_kg']) ? $_POST['weight_kg'] : null,
             ':height' => !empty($_POST['height_cm']) ? $_POST['height_cm'] : null,
@@ -97,11 +123,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':diagnosis' => $_POST['diagnosis'] ?? null,
             ':complications' => $_POST['complications'] ?? null,
             ':hiv_code' => $_POST['woman_hiv_code'] ?? null,
-            ':hivst_kit' => isset($_POST['hivst_kit_given']) ? 1 : 0,
+            ':hivst_kit' => formBoolean($_POST, 'hivst_kit_given'),
             ':partner_age' => !empty($_POST['partner_age']) ? $_POST['partner_age'] : null,
             ':partner_result' => $_POST['partner_result_code'] ?? null,
             ':partner_tfv' => $_POST['partner_tfv_code'] ?? null,
-            ':partner_link' => isset($_POST['partner_linked_to_art']) ? 1 : 0,
+            ':partner_link' => formBoolean($_POST, 'partner_linked_to_art'),
             ':partner_place' => $_POST['partner_art_place'] ?? null,
             ':partner_num' => $_POST['partner_art_number'] ?? null,
             ':cd4' => !empty($_POST['cd4_value']) ? $_POST['cd4_value'] : null,
@@ -112,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':risk' => $_POST['emtct_risk'] ?? null,
             ':syphilis' => $_POST['syphilis_result'] ?? null,
             ':hep_b' => $_POST['hepatitis_b_result'] ?? null,
-            ':llin' => isset($_POST['llin_given']) ? 1 : 0,
+            ':llin' => formBoolean($_POST, 'llin_given'),
             ':mebenda' => $_POST['mebendazole_status'] ?? null,
             ':iron' => !empty($_POST['iron_folate_tablets']) ? $_POST['iron_folate_tablets'] : null,
             ':fefan' => !empty($_POST['combined_fefan_tablets']) ? $_POST['combined_fefan_tablets'] : null,
@@ -127,13 +153,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         
         logAction($pdo, $_SESSION['user_id'], 'CREATE_ANC_VISIT', 'anc_visits', $pdo->lastInsertId(), "Added ANC visit #$visit_number");
+        $pdo->commit();
         
         $success = "ANC Visit #$visit_number recorded successfully!";
         
-        echo "<script>setTimeout(function() { window.location.href = 'patient_profile.php?id={$_POST['patient_id']}'; }, 2000);</script>";
+        echo '<script>setTimeout(function(){window.location.href='
+            . json_encode('patient_profile.php?id=' . rawurlencode((string) $episode['patient_id']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+            . ';},2000);</script>';
         
-    } catch (Exception $e) {
-        $error = "Failed to record visit: " . $e->getMessage();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($e instanceof InvalidArgumentException) {
+            $error = $e->getMessage();
+        } else {
+            error_log('ANC visit request failed: ' . $e->getMessage());
+            $error = 'Could not save the ANC visit. Please review the details and try again.';
+        }
     }
 }
 ?>
@@ -472,13 +509,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($success): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i>
-                <span><?php echo $success; ?> Redirecting to patient profile...</span>
+                <span><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?> Redirecting to patient profile...</span>
             </div>
         <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo $error; ?></span>
+                <span><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></span>
             </div>
         <?php endif; ?>
         
@@ -543,7 +580,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="form-group half-width">
                             <label>Next Visit Date</label>
-                            <input type="date" name="next_visit_date" value="<?php echo date('Y-m-d', strtotime('+28 days')); ?>">
+                            <input type="date" name="next_visit_date">
+                            <div class="form-hint">Enter the follow-up date agreed by the clinician; no fixed interval is assumed.</div>
                         </div>
                     </div>
                 </div>
