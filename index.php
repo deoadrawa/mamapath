@@ -750,90 +750,150 @@ if (!function_exists('formatDate')) {
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+function createClinicalChart(canvasId, configuration) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+
+    canvas.setAttribute('aria-hidden', 'true');
+    const chart = new Chart(canvas, configuration);
+    const summary = document.createElement('div');
+    summary.className = 'chart-data-summary';
+    summary.setAttribute('role', 'region');
+    summary.setAttribute('aria-label', `${canvas.closest('.chart-card')?.querySelector('h3')?.textContent.trim() || 'Chart'} data table`);
+
+    const table = document.createElement('table');
+    table.className = 'chart-summary-table';
+    const caption = document.createElement('caption');
+    caption.textContent = 'Data summary';
+    table.append(caption);
+
+    const datasets = configuration.data.datasets || [];
+    const headers = ['Category', ...datasets.map(dataset => dataset.label || 'Count')];
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    headers.forEach((label, index) => {
+        const cell = document.createElement('th');
+        cell.scope = 'col';
+        cell.textContent = label;
+        headerRow.append(cell);
+    });
+    thead.append(headerRow);
+    table.append(thead);
+
+    const tbody = document.createElement('tbody');
+    const labels = configuration.data.labels || [];
+    if (labels.length === 0) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = headers.length;
+        cell.textContent = 'No data available';
+        row.append(cell);
+        tbody.append(row);
+    } else {
+        labels.forEach((label, rowIndex) => {
+            const row = document.createElement('tr');
+            const category = document.createElement('th');
+            category.scope = 'row';
+            category.textContent = String(label ?? 'Not recorded');
+            row.append(category);
+            datasets.forEach(dataset => {
+                const cell = document.createElement('td');
+                cell.textContent = String(dataset.data?.[rowIndex] ?? '—');
+                row.append(cell);
+            });
+            tbody.append(row);
+        });
+    }
+    table.append(tbody);
+    summary.append(table);
+    canvas.insertAdjacentElement('afterend', summary);
+    return chart;
+}
+
 // Chart 1: ANC Trend
-new Chart(document.getElementById('ancTrendChart'), {
+createClinicalChart('ancTrendChart', {
     type: 'line',
     data: {
         labels: <?php echo json_encode(array_column($anc_trend, 'month')); ?>,
-        datasets: [{ label: 'ANC Visits', data: <?php echo json_encode(array_column($anc_trend, 'visits')); ?>, borderColor: '#1e88e5', backgroundColor: 'rgba(30,136,229,0.1)', fill: true, tension: 0.3 }]
+        datasets: [{ label: 'ANC visits', data: <?php echo json_encode(array_column($anc_trend, 'visits')); ?>, borderColor: '#1E40AF', backgroundColor: '#1E40AF', fill: false, tension: 0 }]
     },
     options: { responsive: true, maintainAspectRatio: true }
 });
 
 // Chart 2: Delivery Modes
-new Chart(document.getElementById('deliveryModesChart'), {
+createClinicalChart('deliveryModesChart', {
     type: 'pie',
-    data: { labels: <?php echo json_encode(array_column($delivery_modes, 'mode_of_delivery')); ?>, datasets: [{ data: <?php echo json_encode(array_column($delivery_modes, 'count')); ?>, backgroundColor: ['#1e88e5','#43a047','#fb8c00','#26c6da','#e53935','#8e24aa'] }] },
+    data: { labels: <?php echo json_encode(array_column($delivery_modes, 'mode_of_delivery')); ?>, datasets: [{ label: 'Deliveries', data: <?php echo json_encode(array_column($delivery_modes, 'count')); ?>, backgroundColor: ['#1E40AF','#10B981','#F59E0B','#0F766E','#EF4444','#64748B'] }] },
     options: { responsive: true }
 });
 
 // Chart 3: MUAC
-new Chart(document.getElementById('muacChart'), {
+createClinicalChart('muacChart', {
     type: 'doughnut',
-    data: { labels: <?php echo json_encode(array_column($muac_data, 'muac_color')); ?>, datasets: [{ data: <?php echo json_encode(array_column($muac_data, 'count')); ?>, backgroundColor: ['#dc3545','#ffc107','#28a745'] }] },
+    data: { labels: <?php echo json_encode(array_column($muac_data, 'muac_color')); ?>, datasets: [{ label: 'Records', data: <?php echo json_encode(array_column($muac_data, 'count')); ?>, backgroundColor: ['#EF4444','#F59E0B','#10B981'] }] },
     options: { responsive: true }
 });
 
 // Chart 4: Complications
-new Chart(document.getElementById('complicationsChart'), {
+createClinicalChart('complicationsChart', {
     type: 'bar',
-    data: { labels: <?php echo json_encode(array_column($complications, 'complications')); ?>, datasets: [{ label: 'Number of Cases', data: <?php echo json_encode(array_column($complications, 'count')); ?>, backgroundColor: '#fb8c00', borderRadius: 8 }] },
+    data: { labels: <?php echo json_encode(array_column($complications, 'complications')); ?>, datasets: [{ label: 'Cases', data: <?php echo json_encode(array_column($complications, 'count')); ?>, backgroundColor: '#F59E0B' }] },
     options: { responsive: true, indexAxis: 'y' }
 });
 
 // Chart 5: TT Coverage
-new Chart(document.getElementById('ttChart'), {
+createClinicalChart('ttChart', {
     type: 'bar',
-    data: { labels: <?php echo json_encode(array_column($tt_coverage, 'tt_dose_received')); ?>, datasets: [{ label: 'Mothers', data: <?php echo json_encode(array_column($tt_coverage, 'mothers')); ?>, backgroundColor: '#1e88e5' }] },
+    data: { labels: <?php echo json_encode(array_column($tt_coverage, 'tt_dose_received')); ?>, datasets: [{ label: 'Mothers', data: <?php echo json_encode(array_column($tt_coverage, 'mothers')); ?>, backgroundColor: '#1E40AF' }] },
     options: { responsive: true }
 });
 
 // Chart 6: IPTp
-new Chart(document.getElementById('iptpChart'), {
+createClinicalChart('iptpChart', {
     type: 'bar',
-    data: { labels: <?php echo json_encode(array_column($iptp_data, 'iptp_dose')); ?>, datasets: [{ label: 'Mothers', data: <?php echo json_encode(array_column($iptp_data, 'mothers')); ?>, backgroundColor: '#43a047' }] },
+    data: { labels: <?php echo json_encode(array_column($iptp_data, 'iptp_dose')); ?>, datasets: [{ label: 'Mothers', data: <?php echo json_encode(array_column($iptp_data, 'mothers')); ?>, backgroundColor: '#10B981' }] },
     options: { responsive: true }
 });
 
 // Chart 7: Booking Timing
-new Chart(document.getElementById('bookingChart'), {
+createClinicalChart('bookingChart', {
     type: 'pie',
-    data: { labels: <?php echo json_encode(array_column($booking_timing, 'booking_timing')); ?>, datasets: [{ data: <?php echo json_encode(array_column($booking_timing, 'count')); ?>, backgroundColor: ['#28a745','#dc3545'] }] },
+    data: { labels: <?php echo json_encode(array_column($booking_timing, 'booking_timing')); ?>, datasets: [{ label: 'Bookings', data: <?php echo json_encode(array_column($booking_timing, 'count')); ?>, backgroundColor: ['#10B981','#EF4444'] }] },
     options: { responsive: true }
 });
 
 // Chart 8: HIV Status
-new Chart(document.getElementById('hivChart'), {
+createClinicalChart('hivChart', {
     type: 'doughnut',
-    data: { labels: <?php echo json_encode(array_column($hiv_status, 'status')); ?>, datasets: [{ data: <?php echo json_encode(array_column($hiv_status, 'count')); ?>, backgroundColor: ['#28a745','#dc3545','#6c757d'] }] },
+    data: { labels: <?php echo json_encode(array_column($hiv_status, 'status')); ?>, datasets: [{ label: 'Records', data: <?php echo json_encode(array_column($hiv_status, 'count')); ?>, backgroundColor: ['#10B981','#EF4444','#64748B'] }] },
     options: { responsive: true }
 });
 
 // Chart 9: PNC Timing
-new Chart(document.getElementById('pncTimingChart'), {
+createClinicalChart('pncTimingChart', {
     type: 'bar',
-    data: { labels: <?php echo json_encode(array_column($pnc_timing, 'visit_timing')); ?>, datasets: [{ label: 'Visits', data: <?php echo json_encode(array_column($pnc_timing, 'visits')); ?>, backgroundColor: '#26c6da' }] },
+    data: { labels: <?php echo json_encode(array_column($pnc_timing, 'visit_timing')); ?>, datasets: [{ label: 'Visits', data: <?php echo json_encode(array_column($pnc_timing, 'visits')); ?>, backgroundColor: '#0F766E' }] },
     options: { responsive: true }
 });
 
 // Chart 10: LBW
-new Chart(document.getElementById('lbwChart'), {
+createClinicalChart('lbwChart', {
     type: 'pie',
-    data: { labels: <?php echo json_encode(array_column($lbw_data, 'category')); ?>, datasets: [{ data: <?php echo json_encode(array_column($lbw_data, 'count')); ?>, backgroundColor: ['#dc3545','#28a745'] }] },
+    data: { labels: <?php echo json_encode(array_column($lbw_data, 'category')); ?>, datasets: [{ label: 'Births', data: <?php echo json_encode(array_column($lbw_data, 'count')); ?>, backgroundColor: ['#EF4444','#10B981'] }] },
     options: { responsive: true }
 });
 
 // Chart 11: Referral Types
-new Chart(document.getElementById('referralChart'), {
+createClinicalChart('referralChart', {
     type: 'bar',
-    data: { labels: <?php echo json_encode(array_column($referral_types, 'referral_type')); ?>, datasets: [{ label: 'Referrals', data: <?php echo json_encode(array_column($referral_types, 'count')); ?>, backgroundColor: '#fb8c00' }] },
+    data: { labels: <?php echo json_encode(array_column($referral_types, 'referral_type')); ?>, datasets: [{ label: 'Referrals', data: <?php echo json_encode(array_column($referral_types, 'count')); ?>, backgroundColor: '#F59E0B' }] },
     options: { responsive: true }
 });
 
 // Chart 12: eMTCT Risk
-new Chart(document.getElementById('emtctRiskChart'), {
+createClinicalChart('emtctRiskChart', {
     type: 'pie',
-    data: { labels: <?php echo json_encode(array_column($emtct_risk, 'emtct_risk')); ?>, datasets: [{ data: <?php echo json_encode(array_column($emtct_risk, 'count')); ?>, backgroundColor: ['#dc3545','#28a745'] }] },
+    data: { labels: <?php echo json_encode(array_column($emtct_risk, 'emtct_risk')); ?>, datasets: [{ label: 'Records', data: <?php echo json_encode(array_column($emtct_risk, 'count')); ?>, backgroundColor: ['#EF4444','#10B981'] }] },
     options: { responsive: true }
 });
 </script>

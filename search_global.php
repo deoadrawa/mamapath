@@ -6,7 +6,6 @@
 
 require_once 'config.php';
 requireLogin();
-require_once 'nav.php';
 
 $query = trim($_GET['q'] ?? '');
 $search_type = $_GET['type'] ?? 'all';
@@ -297,6 +296,19 @@ if (!function_exists('formatDateTime')) {
         return date('d M Y H:i', strtotime($datetime));
     }
 }
+
+$rawPatientContextId = $_GET['patient_id'] ?? null;
+$patientContextId = is_scalar($rawPatientContextId)
+    ? filter_var($rawPatientContextId, FILTER_VALIDATE_INT)
+    : false;
+$patientContext = $patientContextId !== false && $patientContextId > 0
+    ? getPatientContextSummary($pdo, $patientContextId)
+    : null;
+$contextCloseParams = $_GET;
+unset($contextCloseParams['patient_id']);
+$contextCloseUrl = 'search_global.php' . ($contextCloseParams ? '?' . http_build_query($contextCloseParams) : '');
+
+require_once 'nav.php';
 ?>
 
 <!-- Add custom styles that won't interfere with existing system layout -->
@@ -681,7 +693,7 @@ if (!function_exists('formatDateTime')) {
     }
 </style>
 
-<div class="search-container">
+<div class="search-container<?php echo $patientContext ? ' has-context' : ''; ?>">
     <div class="search-card">
         <div class="search-header">
             <h2><i class="fas fa-search"></i> Advanced Global Search</h2>
@@ -801,6 +813,10 @@ if (!function_exists('formatDateTime')) {
                             
                             <div class="result-action">
                                 <?php if ($result['type'] == 'patient'): ?>
+                                    <?php $previewParams = array_merge($_GET, ['patient_id' => (int) $result['id']]); ?>
+                                    <a href="search_global.php?<?php echo htmlspecialchars(http_build_query($previewParams), ENT_QUOTES, 'UTF-8'); ?>" class="action-link context-action">
+                                        <i class="fas fa-id-card"></i> Quick context
+                                    </a>
                                     <a href="patient_profile.php?id=<?php echo $result['id']; ?>" class="action-link">
                                         <i class="fas fa-eye"></i> View Full Profile
                                     </a>
@@ -815,6 +831,7 @@ if (!function_exists('formatDateTime')) {
                                     </a>
                                 <?php endif; ?>
                             </div>
+
                         </div>
                     <?php endforeach; ?>
                 <?php else: ?>
@@ -892,6 +909,38 @@ if (!function_exists('formatDateTime')) {
             </div>
         <?php endif; ?>
     </div>
+
+    <?php if ($patientContext): ?>
+        <aside class="patient-context" aria-labelledby="patient-context-title">
+            <div class="patient-context-header">
+                <div>
+                    <p class="eyebrow">Selected patient</p>
+                    <h2 id="patient-context-title"><?php echo htmlspecialchars($patientContext['surname'] . ' ' . $patientContext['first_name']); ?></h2>
+                    <p><?php echo htmlspecialchars($patientContext['client_number'] ?? 'No client number'); ?></p>
+                </div>
+                <a class="context-close" href="<?php echo htmlspecialchars($contextCloseUrl, ENT_QUOTES, 'UTF-8'); ?>" aria-label="Close patient context" title="Close patient context"><i class="fas fa-times"></i></a>
+            </div>
+            <dl class="patient-context-details">
+                <div><dt>Age</dt><dd><?php echo htmlspecialchars((string) ($patientContext['age'] ?? 'Not recorded')); ?><?php echo $patientContext['age'] !== null ? ' years' : ''; ?></dd></div>
+                <div><dt>Phone</dt><dd><?php echo htmlspecialchars($patientContext['phone'] ?? 'Not recorded'); ?></dd></div>
+                <div><dt>Location</dt><dd><?php echo htmlspecialchars(implode(', ', array_filter([$patientContext['village'] ?? '', $patientContext['district'] ?? ''])) ?: 'Not recorded'); ?></dd></div>
+                <div><dt>Pregnancy</dt><dd><?php echo htmlspecialchars(ucfirst($patientContext['pregnancy_status'] ?? 'No recorded pregnancy')); ?></dd></div>
+                <?php if ($patientContext['episode_id']): ?>
+                    <div><dt>Gravida / parity</dt><dd><?php echo htmlspecialchars(($patientContext['gravida'] ?? '—') . ' / ' . ($patientContext['parity'] ?? '—')); ?></dd></div>
+                    <div><dt>LMP</dt><dd><?php echo htmlspecialchars(formatDate($patientContext['lmp'])); ?></dd></div>
+                    <div><dt>Estimated delivery</dt><dd><?php echo htmlspecialchars(formatDate($patientContext['edd'])); ?></dd></div>
+                    <div><dt>ANC visits</dt><dd><?php echo number_format((int) $patientContext['anc_visit_count']); ?><?php if ($patientContext['last_anc_date']): ?> · Last: <?php echo htmlspecialchars(formatDate($patientContext['last_anc_date'])); ?><?php endif; ?></dd></div>
+                <?php endif; ?>
+            </dl>
+            <div class="patient-context-actions">
+                <a class="btn btn-primary" href="patient_profile.php?id=<?php echo (int) $patientContext['id']; ?>"><i class="fas fa-user"></i> Open full profile</a>
+                <?php if (!empty($patientContext['episode_id']) && $patientContext['pregnancy_status'] === 'active'): ?>
+                    <a class="btn btn-secondary" href="anc_visit.php?episode_id=<?php echo (int) $patientContext['episode_id']; ?>"><i class="fas fa-notes-medical"></i> Record ANC visit</a>
+                <?php endif; ?>
+            </div>
+        </aside>
+        <a class="patient-context-backdrop" href="<?php echo htmlspecialchars($contextCloseUrl, ENT_QUOTES, 'UTF-8'); ?>" aria-label="Close patient context"></a>
+    <?php endif; ?>
 </div>
 
 <script>

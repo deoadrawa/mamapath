@@ -268,6 +268,31 @@ function formatDateTime($datetime): string
     return date('d M Y H:i', strtotime($datetime));
 }
 
+function getPatientContextSummary(PDO $pdo, int $patientId): ?array
+{
+    $stmt = $pdo->prepare(
+        "SELECT p.id, p.surname, p.first_name, p.age, p.phone, p.village, p.district,
+                pe.id AS episode_id, pe.client_number, pe.gravida, pe.parity,
+                pe.lmp, pe.edd, pe.status AS pregnancy_status,
+                (SELECT COUNT(*) FROM anc_visits av WHERE av.pregnancy_episode_id = pe.id) AS anc_visit_count,
+                (SELECT MAX(av.visit_date) FROM anc_visits av WHERE av.pregnancy_episode_id = pe.id) AS last_anc_date
+         FROM patients p
+         LEFT JOIN pregnancy_episodes pe ON pe.id = (
+             SELECT pe2.id
+             FROM pregnancy_episodes pe2
+             WHERE pe2.patient_id = p.id
+             ORDER BY (pe2.status = 'active') DESC, pe2.created_at DESC, pe2.id DESC
+             LIMIT 1
+         )
+         WHERE p.id = :patient_id
+         LIMIT 1"
+    );
+    $stmt->execute([':patient_id' => $patientId]);
+    $patient = $stmt->fetch();
+
+    return $patient ?: null;
+}
+
 function getCurrentDateTime(): string
 {
     return date('Y-m-d H:i:s');

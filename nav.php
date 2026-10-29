@@ -25,7 +25,6 @@ $user_role = $_SESSION['user_role'] ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lubaga Hospital MCH System</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             /* Light Mode Colors */
@@ -331,7 +330,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: var(--text-primary);
         }
     </style>
-    <link rel="stylesheet" href="app.css?v=4.0">
+    <link rel="stylesheet" href="app.css?v=5.1">
 </head>
 <body>
 <div class="app-wrapper">
@@ -359,13 +358,17 @@ $user_role = $_SESSION['user_role'] ?? '';
                 <span>Patient Registry</span>
             </a>
             <div class="nav-section-label">Maternal care</div>
-            <a href="register_patient.php" class="nav-item" data-menu="anc" id="menu-register">
+            <a href="register_patient.php" class="nav-item" data-menu="register" id="menu-register">
                 <i class="fas fa-user-plus"></i>
                 <span>Register / First ANC</span>
             </a>
             <a href="anc_visit.php" class="nav-item" data-menu="anc" id="menu-anc">
                 <i class="fas fa-notes-medical"></i>
                 <span>ANC Follow-up</span>
+            </a>
+            <a href="appointments.php" class="nav-item" data-menu="appointments" id="menu-appointments">
+                <i class="fas fa-calendar-check"></i>
+                <span>Appointments</span>
             </a>
             <a href="delivery_admission.php" class="nav-item" data-menu="delivery" id="menu-delivery">
                 <i class="fas fa-birthday-cake"></i>
@@ -379,10 +382,6 @@ $user_role = $_SESSION['user_role'] ?? '';
             <a href="child_followup.php" class="nav-item" data-menu="child" id="menu-child">
                 <i class="fas fa-baby"></i>
                 <span>Child Health</span>
-            </a>
-            <a href="appointments.php" class="nav-item" data-menu="appointments" id="menu-appointments">
-                <i class="fas fa-calendar-check"></i>
-                <span>Appointments</span>
             </a>
             <a href="referrals.php" class="nav-item" data-menu="referrals" id="menu-referrals">
                 <i class="fas fa-share-square"></i>
@@ -422,6 +421,24 @@ $user_role = $_SESSION['user_role'] ?? '';
             <?php endif; ?>
         </nav>
     </aside>
+    <button class="nav-backdrop" id="navBackdrop" type="button" aria-label="Close navigation" tabindex="-1" onclick="toggleSidebar(false)"></button>
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+        <a href="index.php" data-menu="dashboard" aria-label="Dashboard">
+            <i class="fas fa-chart-line"></i><span>Dashboard</span>
+        </a>
+        <a href="patients.php" data-menu="patients" aria-label="Patients">
+            <i class="fas fa-users"></i><span>Patients</span>
+        </a>
+        <a href="register_patient.php" data-menu="register" aria-label="Register patient">
+            <i class="fas fa-user-plus"></i><span>Register</span>
+        </a>
+        <a href="appointments.php" data-menu="appointments" aria-label="Appointments">
+            <i class="fas fa-calendar-check"></i><span>Schedule</span>
+        </a>
+        <button type="button" id="mobileMoreToggle" aria-controls="sidebar" aria-expanded="false" onclick="toggleSidebar()">
+            <i class="fas fa-ellipsis"></i><span>More</span>
+        </button>
+    </nav>
 
     <!-- Main Content -->
     <main class="main-content">
@@ -483,30 +500,36 @@ $user_role = $_SESSION['user_role'] ?? '';
     function setActiveMenu() {
         const currentPage = '<?php echo $current_page; ?>';
         const menuMap = {
-            'index.php': 'menu-dashboard',
-            'patients.php': 'menu-patients',
-            'register_patient.php': 'menu-register',
-            'anc_visit.php': 'menu-anc',
-            'delivery_admission.php': 'menu-delivery',
-            'postnatal_visit.php': 'menu-pnc',
-            'search_global.php': 'menu-search',
-            'reports.php': 'menu-reports',
-            'appointments.php': 'menu-appointments',
-            'child_followup.php': 'menu-child',
-            'screenings.php': 'menu-screenings',
-            'referrals.php': 'menu-referrals',
-            'resource_planning.php': 'menu-resources',
-            'users.php': 'menu-users',
-            'audit_log.php': 'menu-audit',
-            'system_check.php': 'menu-system-check',
-            'report_view.php': 'menu-reports',
-            'patient_profile.php': 'menu-patients'
+            'index.php': 'dashboard',
+            'patients.php': 'patients',
+            'register_patient.php': 'register',
+            'anc_visit.php': 'anc',
+            'delivery_admission.php': 'delivery',
+            'postnatal_visit.php': 'pnc',
+            'search_global.php': 'search',
+            'reports.php': 'reports',
+            'appointments.php': 'appointments',
+            'child_followup.php': 'child',
+            'screenings.php': 'screenings',
+            'referrals.php': 'referrals',
+            'resource_planning.php': 'resources',
+            'users.php': 'users',
+            'audit_log.php': 'audit',
+            'system_check.php': 'system-check',
+            'report_view.php': 'reports',
+            'patient_profile.php': 'patients'
         };
         
-        const activeId = menuMap[currentPage];
-        if (activeId) {
-            document.getElementById(activeId)?.classList.add('active');
+        const activeMenu = menuMap[currentPage];
+        if (activeMenu) {
+            document.querySelectorAll(`[data-menu="${activeMenu}"]`).forEach(item => {
+                item.classList.add('active');
+                if (item.matches('a')) item.setAttribute('aria-current', 'page');
+            });
         }
+        document.querySelectorAll('.nav-menu .nav-item').forEach(item => {
+            item.title = item.querySelector('span')?.textContent.trim() || '';
+        });
     }
     
     // Live Date/Time Update
@@ -548,10 +571,13 @@ $user_role = $_SESSION['user_role'] ?? '';
     }
     
     // Sidebar Toggle for Mobile
-    function toggleSidebar() {
+    function toggleSidebar(forceOpen) {
         const sidebar = document.getElementById('sidebar');
-        const isOpen = sidebar.classList.toggle('open');
+        const isOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('open');
+        sidebar.classList.toggle('open', isOpen);
+        document.body.classList.toggle('nav-open', isOpen);
         document.getElementById('menuToggle')?.setAttribute('aria-expanded', String(isOpen));
+        document.getElementById('mobileMoreToggle')?.setAttribute('aria-expanded', String(isOpen));
     }
     
     // Initialize all
@@ -560,5 +586,11 @@ $user_role = $_SESSION['user_role'] ?? '';
         updateDateTime();
         initDarkMode();
         setInterval(updateDateTime, 1000);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') toggleSidebar(false);
+        });
+        document.querySelectorAll('.nav-menu a').forEach(link => {
+            link.addEventListener('click', () => toggleSidebar(false));
+        });
     });
 </script>

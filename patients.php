@@ -7,7 +7,6 @@
 
 require_once 'config.php';
 requireLogin();
-require_once 'nav.php';
 
 // Handle search and filters
 $search = $_GET['search'] ?? '';
@@ -128,6 +127,19 @@ foreach ($patients as $p) {
         }
     }
 }
+
+$rawPatientContextId = $_GET['patient_id'] ?? null;
+$patientContextId = is_scalar($rawPatientContextId)
+    ? filter_var($rawPatientContextId, FILTER_VALIDATE_INT)
+    : false;
+$patientContext = $patientContextId !== false && $patientContextId > 0
+    ? getPatientContextSummary($pdo, $patientContextId)
+    : null;
+$contextCloseParams = $_GET;
+unset($contextCloseParams['patient_id']);
+$contextCloseUrl = 'patients.php' . ($contextCloseParams ? '?' . http_build_query($contextCloseParams) : '');
+
+require_once 'nav.php';
 ?>
 
 <style>
@@ -562,6 +574,7 @@ foreach ($patients as $p) {
 </style>
 
 <!-- FILTER BAR - FIXED (NO SCROLL) -->
+<div class="patients-workspace<?php echo $patientContext ? ' has-context' : ''; ?>">
 <div class="patients-container">
     <div class="filter-bar">
         <form method="GET" style="display: contents;">
@@ -703,14 +716,14 @@ foreach ($patients as $p) {
                         }
                     ?>
                     <tr style="<?php echo ($is_active && $patient['has_risk']) ? 'border-left: 3px solid #c62828;' : ''; ?>">
-                        <td><strong><?php echo htmlspecialchars($patient['client_number'] ?? '—'); ?></strong></td>
-                        <td>
+                        <td data-label="Client"><strong><?php echo htmlspecialchars($patient['client_number'] ?? '—'); ?></strong></td>
+                        <td data-label="Patient">
                             <strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong>
                             <div class="subtext"><i class="fas fa-id-card"></i> <?php echo htmlspecialchars($patient['nin'] ?? '—'); ?></div>
                         </td>
-                        <td><?php echo $patient['age'] ?? '—'; ?> <span class="text-muted">yrs</span></td>
-                        <td><span class="badge badge-info" style="background: #e3f2fd; padding: 2px 8px;"><?php echo ($patient['gravida'] ?? '0') . ' / ' . ($patient['parity'] ?? '0'); ?></span></td>
-                        <td>
+                        <td data-label="Age"><?php echo $patient['age'] ?? '—'; ?> <span class="text-muted">yrs</span></td>
+                        <td data-label="Gravida / parity"><span class="badge badge-info" style="background: #e3f2fd; padding: 2px 8px;"><?php echo ($patient['gravida'] ?? '0') . ' / ' . ($patient['parity'] ?? '0'); ?></span></td>
+                        <td data-label="Contact">
                             <?php if (!empty($patient['phone'])): ?>
                                 <i class="fas fa-phone" style="color: #2e7d64;"></i> <?php echo htmlspecialchars($patient['phone']); ?>
                                 <div class="subtext"><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($patient['village'] ?? ''); ?></div>
@@ -721,17 +734,17 @@ foreach ($patients as $p) {
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>
-                        <td>
+                        <td data-label="Pregnancy">
                             <?php if ($is_active): ?>
                                 <span class="badge badge-active"><i class="fas fa-circle"></i> Active Pregnancy</span>
                             <?php else: ?>
                                 <span class="badge badge-inactive"><i class="fas fa-circle"></i> No Pregnancy</span>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo $last_anc_display; ?></td>
-                        <td><span class="badge <?php echo $next_anc_class; ?>"><?php echo $next_anc_label; ?></span></td>
-                        <td><span class="badge <?php echo $edd_class; ?>"><?php echo $edd_label; ?></span></td>
-                        <td>
+                        <td data-label="Last ANC"><?php echo $last_anc_display; ?></td>
+                        <td data-label="Next ANC"><span class="badge <?php echo $next_anc_class; ?>"><?php echo $next_anc_label; ?></span></td>
+                        <td data-label="Estimated delivery"><span class="badge <?php echo $edd_class; ?>"><?php echo $edd_label; ?></span></td>
+                        <td data-label="Risk">
                             <?php if ($is_active && $patient['has_risk']): ?>
                                 <span class="badge badge-risk"><i class="fas fa-exclamation-triangle"></i> High Risk</span>
                             <?php elseif ($is_active): ?>
@@ -740,7 +753,11 @@ foreach ($patients as $p) {
                                 —
                             <?php endif; ?>
                         </td>
-                        <td class="action-group">
+                        <td class="action-group" data-label="Actions">
+                            <?php $previewParams = array_merge($_GET, ['patient_id' => (int) $patient['id']]); ?>
+                            <a href="patients.php?<?php echo htmlspecialchars(http_build_query($previewParams), ENT_QUOTES, 'UTF-8'); ?>" class="action-icon" title="Quick patient context" aria-label="Quick patient context for <?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <i class="fas fa-id-card"></i>
+                            </a>
                             <a href="patient_profile.php?id=<?php echo $patient['id']; ?>" class="action-icon" title="View Full Profile">
                                 <i class="fas fa-eye"></i>
                             </a>
@@ -809,6 +826,39 @@ foreach ($patients as $p) {
         <?php endif; ?>
     </div>
     <?php endif; ?>
+</div>
+
+<?php if ($patientContext): ?>
+    <aside class="patient-context" aria-labelledby="patient-context-title">
+        <div class="patient-context-header">
+            <div>
+                <p class="eyebrow">Selected patient</p>
+                <h2 id="patient-context-title"><?php echo htmlspecialchars($patientContext['surname'] . ' ' . $patientContext['first_name']); ?></h2>
+                <p><?php echo htmlspecialchars($patientContext['client_number'] ?? 'No client number'); ?></p>
+            </div>
+            <a class="context-close" href="<?php echo htmlspecialchars($contextCloseUrl, ENT_QUOTES, 'UTF-8'); ?>" aria-label="Close patient context" title="Close patient context"><i class="fas fa-times"></i></a>
+        </div>
+        <dl class="patient-context-details">
+            <div><dt>Age</dt><dd><?php echo htmlspecialchars((string) ($patientContext['age'] ?? 'Not recorded')); ?><?php echo $patientContext['age'] !== null ? ' years' : ''; ?></dd></div>
+            <div><dt>Phone</dt><dd><?php echo htmlspecialchars($patientContext['phone'] ?? 'Not recorded'); ?></dd></div>
+            <div><dt>Location</dt><dd><?php echo htmlspecialchars(implode(', ', array_filter([$patientContext['village'] ?? '', $patientContext['district'] ?? ''])) ?: 'Not recorded'); ?></dd></div>
+            <div><dt>Pregnancy</dt><dd><?php echo htmlspecialchars(ucfirst($patientContext['pregnancy_status'] ?? 'No recorded pregnancy')); ?></dd></div>
+            <?php if ($patientContext['episode_id']): ?>
+                <div><dt>Gravida / parity</dt><dd><?php echo htmlspecialchars(($patientContext['gravida'] ?? '—') . ' / ' . ($patientContext['parity'] ?? '—')); ?></dd></div>
+                <div><dt>LMP</dt><dd><?php echo htmlspecialchars(formatDate($patientContext['lmp'])); ?></dd></div>
+                <div><dt>Estimated delivery</dt><dd><?php echo htmlspecialchars(formatDate($patientContext['edd'])); ?></dd></div>
+                <div><dt>ANC visits</dt><dd><?php echo number_format((int) $patientContext['anc_visit_count']); ?><?php if ($patientContext['last_anc_date']): ?> · Last: <?php echo htmlspecialchars(formatDate($patientContext['last_anc_date'])); ?><?php endif; ?></dd></div>
+            <?php endif; ?>
+        </dl>
+        <div class="patient-context-actions">
+            <a class="btn btn-primary" href="patient_profile.php?id=<?php echo (int) $patientContext['id']; ?>"><i class="fas fa-user"></i> Open full profile</a>
+            <?php if (!empty($patientContext['episode_id']) && $patientContext['pregnancy_status'] === 'active'): ?>
+                <a class="btn btn-secondary" href="anc_visit.php?episode_id=<?php echo (int) $patientContext['episode_id']; ?>"><i class="fas fa-notes-medical"></i> Record ANC visit</a>
+            <?php endif; ?>
+        </div>
+    </aside>
+    <a class="patient-context-backdrop" href="<?php echo htmlspecialchars($contextCloseUrl, ENT_QUOTES, 'UTF-8'); ?>" aria-label="Close patient context"></a>
+<?php endif; ?>
 </div>
 
 <script>
