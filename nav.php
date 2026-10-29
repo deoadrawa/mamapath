@@ -330,7 +330,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: var(--text-primary);
         }
     </style>
-    <link rel="stylesheet" href="app.css?v=5.2">
+    <link rel="stylesheet" href="app.css?v=5.6">
 </head>
 <body>
 <div class="app-wrapper">
@@ -569,6 +569,61 @@ $user_role = $_SESSION['user_role'] ?? '';
             }
         });
     }
+
+    function initSearchableSelects() {
+        document.querySelectorAll('.content-container select:not([data-no-search])').forEach((select, index) => {
+            const isPatientSelection = /patient|mother|episode|baby/i.test(`${select.id} ${select.name} ${select.className}`);
+            if ((!isPatientSelection && select.options.length < 12) || select.dataset.searchReady === 'true') return;
+
+            if (!select.id) select.id = `searchable-select-${index + 1}`;
+            const label = select.labels?.[0]?.textContent.trim()
+                || select.getAttribute('aria-label')
+                || 'options';
+            const search = document.createElement('input');
+            search.type = 'search';
+            search.className = 'select-search-input';
+            search.placeholder = `Type to filter ${label.toLowerCase()}…`;
+            search.setAttribute('aria-label', `Filter ${label}`);
+            search.setAttribute('aria-controls', select.id);
+            search.setAttribute('autocomplete', 'off');
+            search.spellcheck = false;
+
+            const status = document.createElement('span');
+            status.className = 'select-search-status';
+            status.setAttribute('aria-live', 'polite');
+
+            const helper = document.createElement('div');
+            helper.className = 'select-search-control';
+            helper.append(search, status);
+            select.parentNode.insertBefore(helper, select);
+            select.dataset.searchReady = 'true';
+
+            const initialHidden = new WeakMap();
+            Array.from(select.options).forEach(option => initialHidden.set(option, option.hidden));
+
+            const updateOptions = () => {
+                const query = search.value.trim().toLocaleLowerCase();
+                let matches = 0;
+                Array.from(select.options).forEach(option => {
+                    if (!initialHidden.has(option)) initialHidden.set(option, option.hidden);
+                    const matched = !query || option.textContent.toLocaleLowerCase().includes(query);
+                    option.hidden = initialHidden.get(option) || !matched;
+                    if (!initialHidden.get(option) && matched) matches++;
+                });
+                status.textContent = query
+                    ? `${matches} matching option${matches === 1 ? '' : 's'}`
+                    : `${select.options.length} options available`;
+            };
+
+            search.addEventListener('input', updateOptions);
+            select.addEventListener('change', () => {
+                search.value = '';
+                updateOptions();
+            });
+            new MutationObserver(updateOptions).observe(select, { childList: true });
+            updateOptions();
+        });
+    }
     
     // Sidebar Toggle for Mobile
     function toggleSidebar(forceOpen) {
@@ -585,6 +640,7 @@ $user_role = $_SESSION['user_role'] ?? '';
         setActiveMenu();
         updateDateTime();
         initDarkMode();
+        initSearchableSelects();
         setInterval(updateDateTime, 1000);
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') toggleSidebar(false);

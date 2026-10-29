@@ -554,8 +554,8 @@ $total_iptp = count($iptp_doses);
                                 echo '<span class="hiv-negative">' . $visit['woman_hiv_code'] . '</span>';
                             } else { echo '-'; }
                         ?></td>
-                        <td><?php echo htmlspecialchars(substr($visit['diagnosis'] ?? '', 0, 25)); ?></td>
-                        <td class="<?php echo !empty($visit['complications']) && $visit['complications'] != 'Nil' ? 'value-danger' : ''; ?>"><?php echo htmlspecialchars(substr($visit['complications'] ?? '', 0, 25) ?: '-'); ?></td>
+                        <td><?php echo htmlspecialchars($visit['diagnosis'] ?? ''); ?></td>
+                        <td class="<?php echo !empty($visit['complications']) && $visit['complications'] != 'Nil' ? 'value-danger' : ''; ?>"><?php echo htmlspecialchars($visit['complications'] ?? '-') ?: '-'; ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -635,7 +635,7 @@ $total_iptp = count($iptp_doses);
                         <td class="<?php echo ($pn['baby_weight_kg'] ?? 0) < 2.5 ? 'value-warning' : 'value-positive'; ?>"><?php echo $pn['baby_weight_kg']; ?> kg</td>
                         <td><?php echo str_replace('_', ' ', $pn['infant_feeding_option'] ?? '-'); ?></td>
                         <td class="<?php echo $pn['dbs_test_result'] == 'positive' ? 'value-danger' : ($pn['dbs_test_result'] == 'negative' ? 'value-positive' : 'value-warning'); ?>"><?php echo ucfirst($pn['dbs_test_result'] ?? 'pending'); ?></td>
-                        <td><?php echo htmlspecialchars(substr($pn['immunization_status'] ?? '', 0, 25)); ?></td>
+                        <td><?php echo htmlspecialchars($pn['immunization_status'] ?? ''); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
