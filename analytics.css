@@ -62,3 +62,15 @@
     .an-table-wrap { max-height: none; overflow: visible; }
     .an-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.an-pdf-mode .an-chart, .an-pdf-mode .an-kpis, .an-pdf-mode .an-note { box-shadow: none; }
+.an-btn-pdf { background: #1E40AF; border-color: #1E40AF; color: #fff; }
+.an-btn-pdf:hover { background: #1E3A8A; }
+.an-btn-pdf:disabled { opacity: .7; cursor: wait; }
+@media print { .an-btn-pdf { display: none; } }
+.an-pdf-mode .an-report { width: 1100px; max-width: none; }
+.an-pdf-mode .an-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.an-pdf-mode .an-table-wrap { max-height: none; overflow: visible; }
+.an-pdf-mode .an-table { font-size: 12px; }
+.an-pdf-mode .an-table th, .an-pdf-mode .an-table td { white-space: normal; padding: 6px 8px; }
+.an-pdf-mode .an-table thead th { position: static; }

@@ -95,7 +95,7 @@ $baseQuery = analyticsFilterQuery($filters);
 $pageTitle = $report['title'] ?? 'Strategic Analytics';
 ?>
 <?php require_once 'nav.php'; ?>
-<link rel="stylesheet" href="analytics.css?v=1">
+<link rel="stylesheet" href="analytics.css?v=2">
 <section class="an-page">
     <header class="an-head">
         <div>
@@ -111,6 +111,7 @@ $pageTitle = $report['title'] ?? 'Strategic Analytics';
         <?php if ($report): ?>
             <div class="an-actions">
                 <a class="an-btn" href="analytics.php?<?php echo $h(analyticsFilterQuery($filters, ['r' => $reportId, 'export' => 'csv'])); ?>"><i class="fas fa-file-csv"></i> Export CSV</a>
+                <button type="button" class="an-btn an-btn-pdf" id="anPdf" data-title="<?php echo $h($report['title']); ?>" data-file="analytics_<?php echo $h($reportId); ?>_<?php echo date('Y-m-d'); ?>.pdf" data-user="<?php echo $h($_SESSION['username'] ?? ''); ?>"><i class="fas fa-file-pdf"></i> Download PDF</button>
                 <button type="button" class="an-btn" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
             </div>
         <?php endif; ?>
@@ -284,7 +285,10 @@ $pageTitle = $report['title'] ?? 'Strategic Analytics';
     <p class="an-foot"><i class="fas fa-stopwatch"></i> Calculated in <?php echo (int) $elapsedMs; ?> ms. Partial first and last periods may show lower counts. Rates show the numerator and denominator in the table.</p>
     <script type="application/json" id="anData"><?php echo json_encode($chartData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR); ?></script>
     <script src="assets/vendor/chart.umd.js"></script>
+    <script src="assets/vendor/html2canvas.min.js"></script>
+    <script src="assets/vendor/jspdf.umd.min.js"></script>
 <?php endif; ?>
 </section>
-<script src="assets/analytics.js?v=1"></script>
+<script src="assets/analytics.js?v=2"></script>
+<script src="assets/analytics-pdf.js?v=3"></script>
 <?php require_once 'footer.php'; ?>
