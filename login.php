@@ -22,8 +22,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($username === '' || $password === '') {
         $error = 'Please enter both username and password';
     } else {
-        $user = verifyLogin($pdo, $username, $password);
-        if ($user) {
+        $clientIp = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+        $throttled = false;
+        try {
+            $pdo->exec("DELETE FROM login_attempts WHERE attempted_at < (NOW() - INTERVAL 1 DAY)");
+            $attempts = $pdo->prepare("SELECT COUNT(*) FROM login_attempts WHERE username = :u AND ip_address = :ip AND attempted_at > (NOW() - INTERVAL 15 MINUTE)");
+            $attempts->execute([':u' => mb_substr($username, 0, 50), ':ip' => $clientIp]);
+            $throttled = (int) $attempts->fetchColumn() >= 8;
+        } catch (PDOException $e) {
+            error_log('login throttle unavailable: ' . $e->getMessage());
+        }
+        $user = $throttled ? false : verifyLogin($pdo, $username, $password);
+        if ($throttled) {
+            $error = 'Too many failed attempts. Please wait 15 minutes and try again.';
+        } elseif ($user) {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
@@ -37,7 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php');
             exit;
         }
-        $error = 'Invalid username or password';
+        if (!$throttled) {
+            $error = 'Invalid username or password';
+            try {
+                $pdo->prepare("INSERT INTO login_attempts (username, ip_address) VALUES (:u, :ip)")->execute([':u' => mb_substr($username, 0, 50), ':ip' => $clientIp]);
+            } catch (PDOException $e) {
+                error_log('login throttle unavailable: ' . $e->getMessage());
+            }
+        }
     }
 }
 ?>
@@ -47,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Lubaga Hospital MCH System</title>
-    <link rel="stylesheet" href="assets/vendor/fa/all.min.css">
+    <link rel="stylesheet" href="assets/vendor/fa/all.min.css?v=2">
     <style>
         * {
             margin: 0;

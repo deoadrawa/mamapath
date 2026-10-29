@@ -24,7 +24,7 @@ $user_role = $_SESSION['user_role'] ?? '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lubaga Hospital MCH System</title>
-    <link rel="stylesheet" href="assets/vendor/fa/all.min.css">
+    <link rel="stylesheet" href="assets/vendor/fa/all.min.css?v=2">
     <style>
         :root {
             /* Light Mode Colors */
@@ -392,6 +392,10 @@ $user_role = $_SESSION['user_role'] ?? '';
                 <span>Screening</span>
             </a>
             <div class="nav-section-label">Insights & operations</div>
+            <a href="analytics.php" class="nav-item" data-menu="analytics" id="menu-analytics">
+                <i class="fas fa-compass"></i>
+                <span>Strategic Analytics</span>
+            </a>
             <a href="reports.php" class="nav-item" data-menu="reports" id="menu-reports">
                 <i class="fas fa-chart-bar"></i>
                 <span>Reports & Analytics</span>
@@ -456,6 +460,7 @@ $user_role = $_SESSION['user_role'] ?? '';
                         'delivery_admission.php' => 'Delivery & Maternity Admission',
                         'postnatal_visit.php' => 'Postnatal Care Services',
                         'search_global.php' => 'Advanced Global Search',
+                        'analytics.php' => 'Strategic Analytics',
                         'reports.php' => 'Reports & Analytics Hub',
                         'appointments.php' => 'Appointments',
                         'child_followup.php' => 'Child Health Follow-up',
@@ -507,6 +512,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             'delivery_admission.php': 'delivery',
             'postnatal_visit.php': 'pnc',
             'search_global.php': 'search',
+            'analytics.php': 'analytics',
             'reports.php': 'reports',
             'appointments.php': 'appointments',
             'child_followup.php': 'child',

@@ -209,13 +209,14 @@ $users = $pdo->query(
             </form>
         </section>
         <section class="users-card">
-            <h2>Accounts (<?php echo count($users); ?>)</h2>
+            <h2>Accounts (<span id="userCount"><?php echo count($users); ?></span> of <?php echo count($users); ?>)</h2>
+            <input type="search" id="userFilter" placeholder="Search by name, username, role or phone" aria-label="Search accounts" autocomplete="off" style="width:100%;min-height:40px;margin-bottom:12px;padding:0 12px;border:1px solid #CBD5E1;border-radius:6px;box-sizing:border-box">
             <div class="users-table-wrap">
                 <table class="users-table">
                     <thead><tr><th>Username</th><th>Account details</th><th>Last login</th><th>Status</th></tr></thead>
                     <tbody>
                     <?php foreach ($users as $user): ?>
-                        <tr>
+                        <tr data-user-row="<?php echo htmlspecialchars(strtolower($user['username'] . ' ' . $user['full_name'] . ' ' . $user['role'] . ' ' . $user['phone'] . ' ' . $user['job_title']), ENT_QUOTES, 'UTF-8'); ?>">
                             <td><strong><?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></strong></td>
                             <td>
                                 <form method="POST">
@@ -252,4 +253,20 @@ $users = $pdo->query(
         </section>
     </div>
 </section>
+<script>
+(function () {
+    var input = document.getElementById('userFilter');
+    var count = document.getElementById('userCount');
+    if (!input) { return; }
+    input.addEventListener('input', function () {
+        var q = input.value.trim().toLowerCase(), shown = 0;
+        document.querySelectorAll('[data-user-row]').forEach(function (row) {
+            var match = q === '' || row.dataset.userRow.indexOf(q) !== -1;
+            row.hidden = !match;
+            shown += match ? 1 : 0;
+        });
+        count.textContent = shown;
+    });
+}());
+</script>
 <?php require_once 'footer.php'; ?>
