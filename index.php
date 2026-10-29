@@ -555,7 +555,7 @@ if (!function_exists('formatDate')) {
     <div class="chart-card tone-info"><h3><span class="dash-icon"><i class="fas fa-share-from-square"></i></span> Referral Types</h3><canvas id="referralChart"></canvas></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="assets/vendor/chart.umd.js"></script>
 <script>
 function createClinicalChart(canvasId, configuration) {
     const canvas = document.getElementById(canvasId);

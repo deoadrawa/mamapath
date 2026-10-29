@@ -24,7 +24,7 @@ $user_role = $_SESSION['user_role'] ?? '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lubaga Hospital MCH System</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="assets/vendor/fa/all.min.css">
     <style>
         :root {
             /* Light Mode Colors */
@@ -172,7 +172,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             color: rgba(255, 255, 255, 0.8);
             text-decoration: none;
             font-weight: 500;
-            transition: all 0.25s ease;
+            transition: background-color 0.2s, color 0.2s;
             position: relative;
             overflow: hidden;
         }
@@ -204,7 +204,7 @@ $user_role = $_SESSION['user_role'] ?? '';
             position: sticky;
             top: 0;
             z-index: 99;
-            backdrop-filter: blur(10px);
+            
         }
 
         .page-title {
