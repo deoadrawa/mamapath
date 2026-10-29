@@ -338,327 +338,70 @@ if (!function_exists('formatDate')) {
 ?>
 
 <!-- Rest of your HTML remains exactly the same from here -->
-<style>
-    /* COMPACT STATS ROW - ALL ON ONE LINE */
-    .stats-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 20px;
-        justify-content: space-between;
-    }
-    
-    .stat-tile {
-        flex: 1;
-        min-width: 85px;
-        background: var(--card-bg);
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        padding: 8px 6px;
-        text-align: center;
-        transition: all 0.2s;
-    }
-    
-    .stat-tile:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-    }
-    
-    .stat-tile-icon {
-        font-size: 16px;
-        margin-bottom: 4px;
-    }
-    
-    .stat-tile-value {
-        font-size: 18px;
-        font-weight: 700;
-        line-height: 1.2;
-    }
-    
-    .stat-tile-label {
-        font-size: 8px;
-        color: var(--text-secondary);
-        margin-top: 3px;
-        white-space: nowrap;
-    }
-    
-    /* Quick Actions */
-    .quick-actions {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
-    
-    .quick-btn {
-        background: var(--primary);
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 30px;
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: background 0.2s;
-    }
-    
-    .quick-btn:hover {
-        background: var(--primary-light);
-    }
-    
-    /* Follow-up Sections */
-    .followup-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-    }
-    
-    .followup-card {
-        background: var(--card-bg);
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        overflow: hidden;
-    }
-    
-    .followup-header {
-        padding: 12px 16px;
-        background: var(--bg-body);
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .followup-header h4 {
-        font-size: 14px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .followup-badge {
-        font-size: 11px;
-        padding: 2px 10px;
-        border-radius: 20px;
-        background: var(--primary-soft);
-        color: var(--primary);
-    }
-    
-    .followup-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 11px;
-    }
-    
-    .followup-table th, .followup-table td {
-        padding: 10px 8px;
-        text-align: left;
-        border-bottom: 1px solid var(--border);
-    }
-    
-    .followup-table th {
-        background: var(--bg-body);
-        font-weight: 600;
-        color: var(--text-secondary);
-    }
-    
-    .followup-table tr:hover {
-        background: var(--bg-body);
-    }
-    
-    .urgent-badge {
-        background: #ffebee;
-        color: #c62828;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 10px;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .warning-badge {
-        background: #fff3e0;
-        color: #e65100;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 10px;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .success-badge {
-        background: #e8f5e9;
-        color: #2e7d64;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 10px;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .view-link {
-        color: var(--primary);
-        text-decoration: none;
-        font-weight: 500;
-    }
-    
-    .view-link:hover {
-        text-decoration: underline;
-    }
-    
-    .empty-message {
-        text-align: center;
-        padding: 20px;
-        color: var(--text-secondary);
-        font-size: 12px;
-    }
-    
-    /* Charts Grid */
-    .charts-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-        gap: 16px;
-        margin-top: 20px;
-    }
-    
-    .chart-card {
-        background: var(--card-bg);
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        padding: 14px;
-    }
-    
-    .chart-card h3 {
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 12px;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    .chart-card canvas {
-        max-height: 200px;
-    }
-    
-    @media (max-width: 1000px) {
-        .stats-row { flex-wrap: wrap; }
-        .stat-tile { min-width: 90px; }
-        .followup-grid { grid-template-columns: 1fr; }
-        .charts-grid { grid-template-columns: 1fr; }
-    }
-</style>
 
-<!-- Quick Actions -->
-<div class="quick-actions">
-    <button class="quick-btn" onclick="location.href='register_patient.php'"><i class="fas fa-plus-circle"></i> New ANC</button>
-    <button class="quick-btn" onclick="location.href='anc_visit.php'"><i class="fas fa-notes-medical"></i> ANC Visit</button>
-    <button class="quick-btn" onclick="location.href='delivery_admission.php'"><i class="fas fa-birthday-cake"></i> Delivery</button>
-    <button class="quick-btn" onclick="location.href='postnatal_visit.php'"><i class="fas fa-hand-holding-heart"></i> PNC</button>
-    <button class="quick-btn" onclick="location.href='patients.php'"><i class="fas fa-users"></i> All Patients</button>
-    <button class="quick-btn" onclick="location.href='reports.php'"><i class="fas fa-chart-bar"></i> Reports</button>
-</div>
 
-<!-- COMPACT STATS TILES - ALL ON ONE LINE -->
-<div class="stats-row">
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-fetus"></i></div><div class="stat-tile-value"><?php echo $stats['active_pregnancies']; ?></div><div class="stat-tile-label">Active</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-calendar-plus"></i></div><div class="stat-tile-value"><?php echo $stats['new_anc_month']; ?></div><div class="stat-tile-label">New ANC (Month)</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-clock"></i></div><div class="stat-tile-value"><?php echo $stats['early_booking_rate']; ?>%</div><div class="stat-tile-label">Early Booking</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-baby"></i></div><div class="stat-tile-value"><?php echo $stats['deliveries_month']; ?></div><div class="stat-tile-label">Deliveries (Month)</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-chart-line"></i></div><div class="stat-tile-value"><?php echo $stats['cs_rate']; ?>%</div><div class="stat-tile-label">C-Section</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-heartbeat"></i></div><div class="stat-tile-value"><?php echo $stats['hiv_on_art']; ?></div><div class="stat-tile-label">HIV+ Mothers</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-child"></i></div><div class="stat-tile-value"><?php echo $stats['pnc_6week_rate']; ?>%</div><div class="stat-tile-label">PNC 6-Week</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-chart-simple"></i></div><div class="stat-tile-value"><?php echo $stats['avg_anc_visits']; ?></div><div class="stat-tile-label">Avg ANC Visits</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-exclamation-triangle"></i></div><div class="stat-tile-value"><?php echo $stats['stillbirth_rate']; ?>%</div><div class="stat-tile-label">Stillbirth</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-chart-bar"></i></div><div class="stat-tile-value"><?php echo number_format($stats['total_anc_visits']); ?></div><div class="stat-tile-label">Total ANC</div></div>
-</div>
-
-<!-- FOLLOW-UP SECTIONS -->
-<div class="followup-grid">
-    <!-- Upcoming ANC Visits (Due this week) -->
-    <div class="followup-card">
-        <div class="followup-header">
-            <h4><i class="fas fa-calendar-week" style="color: #1e88e5;"></i> Upcoming ANC Visits</h4>
-            <span class="followup-badge">Scheduled date, or needs scheduling</span>
-        </div>
-        <?php if (count($upcoming_anc) > 0): ?>
-            <table class="followup-table">
-                <thead>
-                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Next ANC Date</th><th>Action</th></tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($upcoming_anc as $patient): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
-                        <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
-                        <td><?php echo $patient['last_visit'] ? formatDate($patient['last_visit']) : 'No visits yet'; ?></td>
-                        <td class="<?php echo $patient['days_to_next'] !== null && $patient['days_to_next'] < 0 ? 'urgent-badge' : 'warning-badge'; ?>">
-                            <?php
-                                if ($patient['next_due_date'] === null) {
-                                    echo 'Needs scheduling';
-                                } elseif ($patient['days_to_next'] < 0) {
-                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . abs((int) $patient['days_to_next']) . ' days overdue)', ENT_QUOTES, 'UTF-8');
-                                } elseif ((int) $patient['days_to_next'] === 0) {
-                                    echo 'Today';
-                                } else {
-                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (in ' . (int) $patient['days_to_next'] . ' days)', ENT_QUOTES, 'UTF-8');
-                                }
-                            ?>
-                        </td>
-                        <td><a href="anc_visit.php?episode_id=<?php echo (int)$patient['episode_id']; ?>" class="view-link">Record Visit →</a></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php else: ?>
-            <div class="empty-message"><i class="fas fa-check-circle"></i> All patients are up to date with ANC visits</div>
-        <?php endif; ?>
+<!-- Welcome / priorities -->
+<section class="dash-hero">
+    <div class="dash-hero-text">
+        <h2>Welcome back, <?php echo htmlspecialchars($_SESSION['user_fullname'] ?? $_SESSION['username'] ?? 'Colleague', ENT_QUOTES, 'UTF-8'); ?></h2>
+        <p><i class="fas fa-calendar-day"></i> <?php echo date('l, d F Y'); ?> &middot; Maternal &amp; Child Health</p>
     </div>
-
-    <!-- Expected Deliveries (Next 30 days) -->
-    <div class="followup-card">
-        <div class="followup-header">
-            <h4><i class="fas fa-birthday-cake" style="color: #fb8c00;"></i> Expected Deliveries</h4>
-            <span class="followup-badge">EDD overdue up to 14 days through next 30 days</span>
-        </div>
-        <?php if (count($upcoming_deliveries) > 0): ?>
-            <table class="followup-table">
-                <thead>
-                    <tr><th>Client #</th><th>Patient</th><th>EDD</th><th>Days to/from EDD</th><th>ANC Visits</th><th>Action</th></tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($upcoming_deliveries as $patient): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
-                        <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
-                        <td><?php echo formatDate($patient['edd']); ?></td>
-                        <td class="<?php echo $patient['days_to_edd'] <= 7 ? 'urgent-badge' : 'warning-badge'; ?>">
-                            <?php echo $patient['days_to_edd'] < 0 ? 'EDD passed by ' . abs((int) $patient['days_to_edd']) . ' days' : (int) $patient['days_to_edd'] . ' days'; ?>
-                        </td>
-                        <td><?php echo $patient['anc_visits_count']; ?></td>
-                        <td><a href="patient_profile.php?id=<?php echo $patient['id']; ?>" class="view-link">View →</a></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php else: ?>
-            <div class="empty-message"><i class="fas fa-calendar-alt"></i> No deliveries expected in next 30 days</div>
-        <?php endif; ?>
+    <div class="dash-chips">
+        <a class="dash-chip tone-danger" href="#follow-up"><i class="fas fa-triangle-exclamation"></i><strong><?php echo count($overdue_patients); ?></strong> Overdue</a>
+        <a class="dash-chip tone-warning" href="#follow-up"><i class="fas fa-calendar-check"></i><strong><?php echo count($upcoming_anc); ?></strong> ANC due</a>
+        <a class="dash-chip tone-info" href="#follow-up"><i class="fas fa-baby"></i><strong><?php echo count($upcoming_deliveries); ?></strong> Expected deliveries</a>
+        <a class="dash-chip tone-success" href="#follow-up"><i class="fas fa-hand-holding-medical"></i><strong><?php echo count($recent_deliveries); ?></strong> PNC follow-up</a>
     </div>
+</section>
+
+<!-- Quick actions -->
+<div class="dash-actions">
+    <a class="dash-action tone-primary" href="register_patient.php"><i class="fas fa-user-plus"></i> New ANC</a>
+    <a class="dash-action tone-info" href="anc_visit.php"><i class="fas fa-notes-medical"></i> ANC Visit</a>
+    <a class="dash-action tone-pink" href="delivery_admission.php"><i class="fas fa-baby"></i> Delivery</a>
+    <a class="dash-action tone-success" href="postnatal_visit.php"><i class="fas fa-hand-holding-medical"></i> Postnatal</a>
+    <a class="dash-action tone-teal" href="appointments.php"><i class="fas fa-calendar-check"></i> Appointments</a>
+    <a class="dash-action tone-purple" href="patients.php"><i class="fas fa-users"></i> Patients</a>
+    <a class="dash-action tone-warning" href="reports.php"><i class="fas fa-chart-column"></i> Reports</a>
 </div>
 
+<!-- Key indicators -->
+<div class="dash-kpi-groups">
+    <section class="dash-kpi-group span-12">
+        <h3 class="dash-section"><i class="fas fa-stethoscope"></i> Antenatal care</h3>
+        <div class="stats-row">
+            <a class="stat-tile tone-primary" href="patients.php"><span class="stat-tile-icon"><i class="fas fa-baby"></i></span><span class="stat-tile-value"><?php echo $stats['active_pregnancies']; ?></span><span class="stat-tile-label">Active pregnancies</span></a>
+            <a class="stat-tile tone-info" href="patients.php"><span class="stat-tile-icon"><i class="fas fa-calendar-plus"></i></span><span class="stat-tile-value"><?php echo $stats['new_anc_month']; ?></span><span class="stat-tile-label">New ANC this month</span></a>
+            <a class="stat-tile tone-teal" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-clock"></i></span><span class="stat-tile-value"><?php echo $stats['early_booking_rate']; ?>%</span><span class="stat-tile-label">Early booking rate</span></a>
+            <a class="stat-tile tone-purple" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-chart-column"></i></span><span class="stat-tile-value"><?php echo $stats['avg_anc_visits']; ?></span><span class="stat-tile-label">Average ANC visits</span></a>
+            <a class="stat-tile tone-primary" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-notes-medical"></i></span><span class="stat-tile-value"><?php echo number_format($stats['total_anc_visits']); ?></span><span class="stat-tile-label">Total ANC visits</span></a>
+        </div>
+    </section>
+    <section class="dash-kpi-group span-7">
+        <h3 class="dash-section"><i class="fas fa-baby-carriage"></i> Delivery &amp; postnatal</h3>
+        <div class="stats-row">
+            <a class="stat-tile tone-pink" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-baby"></i></span><span class="stat-tile-value"><?php echo $stats['deliveries_month']; ?></span><span class="stat-tile-label">Deliveries this month</span></a>
+            <a class="stat-tile tone-warning" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-scissors"></i></span><span class="stat-tile-value"><?php echo $stats['cs_rate']; ?>%</span><span class="stat-tile-label">C-section rate</span></a>
+            <a class="stat-tile tone-success" href="postnatal_visit.php"><span class="stat-tile-icon"><i class="fas fa-hand-holding-medical"></i></span><span class="stat-tile-value"><?php echo $stats['pnc_6week_rate']; ?>%</span><span class="stat-tile-label">PNC 6-week coverage</span></a>
+        </div>
+    </section>
+    <section class="dash-kpi-group span-5">
+        <h3 class="dash-section"><i class="fas fa-shield-virus"></i> Safety &amp; risk</h3>
+        <div class="stats-row">
+            <a class="stat-tile tone-danger" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-virus"></i></span><span class="stat-tile-value"><?php echo $stats['hiv_on_art']; ?></span><span class="stat-tile-label">HIV+ mothers</span></a>
+            <a class="stat-tile tone-danger" href="reports.php"><span class="stat-tile-icon"><i class="fas fa-triangle-exclamation"></i></span><span class="stat-tile-value"><?php echo $stats['stillbirth_rate']; ?>%</span><span class="stat-tile-label">Stillbirth rate</span></a>
+        </div>
+    </section>
+</div>
+
+<!-- Follow-up, in order of urgency -->
+<h3 class="dash-section dash-section-lg" id="follow-up"><i class="fas fa-list-check"></i> Priority follow-up</h3>
 <div class="followup-grid">
     <!-- Overdue Patients (Missed Appointments) -->
-    <div class="followup-card">
+    <div class="followup-card tone-danger">
         <div class="followup-header">
-            <h4><i class="fas fa-exclamation-triangle" style="color: #c62828;"></i> Overdue / Missed Visits</h4>
-            <span class="followup-badge">Needs follow-up</span>
+            <h4><span class="dash-icon"><i class="fas fa-exclamation-triangle"></i></span> Overdue / Missed Visits</h4>
+            <span class="followup-badge"><?php echo count($overdue_patients); ?> &middot; Needs follow-up</span>
         </div>
         <?php if (count($overdue_patients) > 0): ?>
             <table class="followup-table">
@@ -671,7 +414,7 @@ if (!function_exists('formatDate')) {
                         <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
                         <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
                         <td><?php echo formatDate($patient['last_visit']); ?></td>
-                        <td class="urgent-badge"><?php echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . (int) $patient['days_overdue'] . ' days overdue)', ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><span class="urgent-badge"><?php echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . (int) $patient['days_overdue'] . ' days overdue)', ENT_QUOTES, 'UTF-8'); ?></span></td>
                         <td><?php echo htmlspecialchars($patient['phone'] ?? '—'); ?></td>
                         <td><a href="anc_visit.php?episode_id=<?php echo (int)$patient['episode_id']; ?>" class="view-link">Record Visit →</a></td>
                     </tr>
@@ -683,11 +426,84 @@ if (!function_exists('formatDate')) {
         <?php endif; ?>
     </div>
 
-    <!-- Recent Deliveries (Need PNC Follow-up) -->
-    <div class="followup-card">
+
+    <!-- Upcoming ANC Visits (Due this week) -->
+    <div class="followup-card tone-warning">
         <div class="followup-header">
-            <h4><i class="fas fa-hand-holding-heart" style="color: #2e7d64;"></i> Recent Deliveries</h4>
-            <span class="followup-badge">PNC follow-up needed</span>
+            <h4><span class="dash-icon"><i class="fas fa-calendar-week"></i></span> Upcoming ANC Visits</h4>
+            <span class="followup-badge"><?php echo count($upcoming_anc); ?> &middot; Scheduled date, or needs scheduling</span>
+        </div>
+        <?php if (count($upcoming_anc) > 0): ?>
+            <table class="followup-table">
+                <thead>
+                    <tr><th>Client #</th><th>Patient</th><th>Last Visit</th><th>Next ANC Date</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($upcoming_anc as $patient): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
+                        <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
+                        <td><?php echo $patient['last_visit'] ? formatDate($patient['last_visit']) : 'No visits yet'; ?></td>
+                        <td><span class="<?php echo $patient['days_to_next'] !== null && $patient['days_to_next'] < 0 ? 'urgent-badge' : 'warning-badge'; ?>">
+                            <?php
+                                if ($patient['next_due_date'] === null) {
+                                    echo 'Needs scheduling';
+                                } elseif ($patient['days_to_next'] < 0) {
+                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (' . abs((int) $patient['days_to_next']) . ' days overdue)', ENT_QUOTES, 'UTF-8');
+                                } elseif ((int) $patient['days_to_next'] === 0) {
+                                    echo 'Today';
+                                } else {
+                                    echo htmlspecialchars(formatDate($patient['next_due_date']) . ' (in ' . (int) $patient['days_to_next'] . ' days)', ENT_QUOTES, 'UTF-8');
+                                }
+                            ?>
+                        </span></td>
+                        <td><a href="anc_visit.php?episode_id=<?php echo (int)$patient['episode_id']; ?>" class="view-link">Record Visit →</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <div class="empty-message"><i class="fas fa-check-circle"></i> All patients are up to date with ANC visits</div>
+        <?php endif; ?>
+    </div>
+
+
+    <!-- Expected Deliveries (Next 30 days) -->
+    <div class="followup-card tone-info">
+        <div class="followup-header">
+            <h4><span class="dash-icon"><i class="fas fa-birthday-cake"></i></span> Expected Deliveries</h4>
+            <span class="followup-badge"><?php echo count($upcoming_deliveries); ?> &middot; EDD overdue up to 14 days through next 30 days</span>
+        </div>
+        <?php if (count($upcoming_deliveries) > 0): ?>
+            <table class="followup-table">
+                <thead>
+                    <tr><th>Client #</th><th>Patient</th><th>EDD</th><th>Days to/from EDD</th><th>ANC Visits</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($upcoming_deliveries as $patient): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($patient['client_number']); ?></td>
+                        <td><strong><?php echo htmlspecialchars($patient['surname'] . ' ' . $patient['first_name']); ?></strong></td>
+                        <td><?php echo formatDate($patient['edd']); ?></td>
+                        <td><span class="<?php echo $patient['days_to_edd'] <= 7 ? 'urgent-badge' : 'warning-badge'; ?>">
+                            <?php echo $patient['days_to_edd'] < 0 ? 'EDD passed by ' . abs((int) $patient['days_to_edd']) . ' days' : (int) $patient['days_to_edd'] . ' days'; ?>
+                        </span></td>
+                        <td><?php echo $patient['anc_visits_count']; ?></td>
+                        <td><a href="patient_profile.php?id=<?php echo $patient['id']; ?>" class="view-link">View →</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <div class="empty-message"><i class="fas fa-calendar-alt"></i> No deliveries expected in next 30 days</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Recent Deliveries (Need PNC Follow-up) -->
+    <div class="followup-card tone-success">
+        <div class="followup-header">
+            <h4><span class="dash-icon"><i class="fas fa-hand-holding-heart"></i></span> Recent Deliveries</h4>
+            <span class="followup-badge"><?php echo count($recent_deliveries); ?> &middot; PNC follow-up needed</span>
         </div>
         <?php if (count($recent_deliveries) > 0): ?>
             <table class="followup-table">
@@ -714,43 +530,29 @@ if (!function_exists('formatDate')) {
     </div>
 </div>
 
-<!-- Charts Grid (12 Charts) -->
+<h3 class="dash-section dash-section-lg"><i class="fas fa-chart-line"></i> Analytics &amp; trends</h3>
+<h4 class="dash-subsection"><i class="fas fa-stethoscope"></i> Antenatal care analytics</h4>
 <div class="charts-grid">
-    <!-- Chart 1: ANC Trend -->
-    <div class="chart-card"><h3><i class="fas fa-chart-line"></i> ANC Visits Trend (6 Months)</h3><canvas id="ancTrendChart"></canvas></div>
-    
-    <!-- Chart 2: Delivery Modes -->
-    <div class="chart-card"><h3><i class="fas fa-chart-pie"></i> Delivery Modes</h3><canvas id="deliveryModesChart"></canvas></div>
-    
-    <!-- Chart 3: MUAC Nutrition Status -->
-    <div class="chart-card"><h3><i class="fas fa-apple-alt"></i> Nutrition Status (MUAC)</h3><canvas id="muacChart"></canvas></div>
-    
-    <!-- Chart 4: Top Complications -->
-    <div class="chart-card"><h3><i class="fas fa-exclamation-triangle"></i> Top 5 Risk Factors</h3><canvas id="complicationsChart"></canvas></div>
-    
-    <!-- Chart 5: TT Immunization Coverage -->
-    <div class="chart-card"><h3><i class="fas fa-syringe"></i> TT Doses Coverage</h3><canvas id="ttChart"></canvas></div>
-    
-    <!-- Chart 6: IPTp Coverage -->
-    <div class="chart-card"><h3><i class="fas fa-tablets"></i> IPTp Doses (Malaria)</h3><canvas id="iptpChart"></canvas></div>
-    
-    <!-- Chart 7: Booking Timing -->
-    <div class="chart-card"><h3><i class="fas fa-calendar-check"></i> First ANC Booking Timing</h3><canvas id="bookingChart"></canvas></div>
-    
-    <!-- Chart 8: HIV Status -->
-    <div class="chart-card"><h3><i class="fas fa-heartbeat"></i> HIV Status Distribution</h3><canvas id="hivChart"></canvas></div>
-    
-    <!-- Chart 9: Postnatal Visit Timing -->
-    <div class="chart-card"><h3><i class="fas fa-child"></i> Postnatal Visit Timing</h3><canvas id="pncTimingChart"></canvas></div>
-    
-    <!-- Chart 10: Low Birth Weight -->
-    <div class="chart-card"><h3><i class="fas fa-weight-scale"></i> Birth Weight Classification</h3><canvas id="lbwChart"></canvas></div>
-    
-    <!-- Chart 11: Referral Types -->
-    <div class="chart-card"><h3><i class="fas fa-referral"></i> Referral Types</h3><canvas id="referralChart"></canvas></div>
-    
-    <!-- Chart 12: eMTCT Risk -->
-    <div class="chart-card"><h3><i class="fas fa-shield-virus"></i> eMTCT Risk Assessment</h3><canvas id="emtctRiskChart"></canvas></div>
+    <div class="chart-card tone-primary"><h3><span class="dash-icon"><i class="fas fa-chart-line"></i></span> ANC Visits Trend (6 Months)</h3><canvas id="ancTrendChart"></canvas></div>
+    <div class="chart-card tone-teal"><h3><span class="dash-icon"><i class="fas fa-calendar-check"></i></span> First ANC Booking Timing</h3><canvas id="bookingChart"></canvas></div>
+    <div class="chart-card tone-info"><h3><span class="dash-icon"><i class="fas fa-syringe"></i></span> TT Doses Coverage</h3><canvas id="ttChart"></canvas></div>
+    <div class="chart-card tone-purple"><h3><span class="dash-icon"><i class="fas fa-tablets"></i></span> IPTp Doses (Malaria)</h3><canvas id="iptpChart"></canvas></div>
+    <div class="chart-card tone-success"><h3><span class="dash-icon"><i class="fas fa-apple-alt"></i></span> Nutrition Status (MUAC)</h3><canvas id="muacChart"></canvas></div>
+</div>
+
+<h4 class="dash-subsection"><i class="fas fa-baby-carriage"></i> Delivery &amp; newborn analytics</h4>
+<div class="charts-grid">
+    <div class="chart-card tone-pink"><h3><span class="dash-icon"><i class="fas fa-chart-pie"></i></span> Delivery Modes</h3><canvas id="deliveryModesChart"></canvas></div>
+    <div class="chart-card tone-warning"><h3><span class="dash-icon"><i class="fas fa-weight-scale"></i></span> Birth Weight Classification</h3><canvas id="lbwChart"></canvas></div>
+    <div class="chart-card tone-success"><h3><span class="dash-icon"><i class="fas fa-child"></i></span> Postnatal Visit Timing</h3><canvas id="pncTimingChart"></canvas></div>
+</div>
+
+<h4 class="dash-subsection"><i class="fas fa-shield-virus"></i> Risk, infection &amp; referral analytics</h4>
+<div class="charts-grid">
+    <div class="chart-card tone-danger"><h3><span class="dash-icon"><i class="fas fa-exclamation-triangle"></i></span> Top 5 Risk Factors</h3><canvas id="complicationsChart"></canvas></div>
+    <div class="chart-card tone-danger"><h3><span class="dash-icon"><i class="fas fa-heartbeat"></i></span> HIV Status Distribution</h3><canvas id="hivChart"></canvas></div>
+    <div class="chart-card tone-purple"><h3><span class="dash-icon"><i class="fas fa-shield-virus"></i></span> eMTCT Risk Assessment</h3><canvas id="emtctRiskChart"></canvas></div>
+    <div class="chart-card tone-info"><h3><span class="dash-icon"><i class="fas fa-share-from-square"></i></span> Referral Types</h3><canvas id="referralChart"></canvas></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

@@ -623,7 +623,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- SECTION 3: PREGNANCY INFORMATION -->
             <div class="form-section">
                 <div class="section-title">
-                    <div class="section-icon"><i class="fas fa-fetus"></i></div>
+                    <div class="section-icon"><i class="fas fa-baby"></i></div>
                     <div>
                         <h3>Pregnancy Information</h3>
                         <p>Obstetric history and current pregnancy</p>

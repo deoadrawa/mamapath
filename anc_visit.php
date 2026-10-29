@@ -559,7 +559,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="info-value"><?php echo $patient_info['client_number']; ?></span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label"><i class="fas fa-fetus"></i> G/P:</span>
+                    <span class="info-label"><i class="fas fa-baby"></i> G/P:</span>
                     <span class="info-value"><?php echo $patient_info['gravida']; ?>/<?php echo $patient_info['parity']; ?></span>
                 </div>
                 <div class="info-item">
@@ -845,7 +845,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <!-- Referral Information -->
                 <div class="form-section">
                     <div class="section-title">
-                        <div class="section-icon"><i class="fas fa-referral"></i></div>
+                        <div class="section-icon"><i class="fas fa-share-from-square"></i></div>
                         <div>
                             <h3>Referral Information</h3>
                             <p>Track referrals in/out of the facility</p>

@@ -702,7 +702,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="info-value"><?php echo $patient_info['client_number']; ?></span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label"><i class="fas fa-fetus"></i> G/P:</span>
+                    <span class="info-label"><i class="fas fa-baby"></i> G/P:</span>
                     <span class="info-value"><?php echo $patient_info['gravida']; ?>/<?php echo $patient_info['parity']; ?></span>
                 </div>
                 <div class="info-item">

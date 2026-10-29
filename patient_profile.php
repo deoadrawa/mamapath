@@ -493,7 +493,7 @@ $total_iptp = count($iptp_doses);
 <?php if ($current_episode): ?>
 <div class="timeline-card">
     <div class="timeline-header">
-        <h3><i class="fas fa-fetus"></i> Pregnancy Details</h3>
+        <h3><i class="fas fa-baby"></i> Pregnancy Details</h3>
         <span class="status-badge <?php echo $current_episode['status'] == 'active' ? 'status-active' : 'status-delivered'; ?>">
             <i class="fas fa-circle"></i> <?php echo ucfirst($current_episode['status']); ?>
         </span>

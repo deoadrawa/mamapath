@@ -591,7 +591,7 @@ $patients_list = $pdo->query("SELECT p.id, p.surname, p.first_name, pe.client_nu
             <div class="stat-tile-label">Total Patients</div>
         </div>
         <div class="stat-tile">
-            <div class="stat-tile-icon"><i class="fas fa-fetus"></i></div>
+            <div class="stat-tile-icon"><i class="fas fa-baby"></i></div>
             <div class="stat-tile-value"><?php echo $active_pregnancies; ?></div>
             <div class="stat-tile-label">Active Pregnancies</div>
         </div>

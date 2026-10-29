@@ -602,7 +602,7 @@ require_once 'nav.php';
     <!-- STATS ROW - FIXED (NO SCROLL) -->
     <div class="stats-row">
         <span class="stat-badge"><i class="fas fa-users" style="color: #1e88e5;"></i> Total: <?php echo $total_patients; ?></span>
-        <span class="stat-badge"><i class="fas fa-fetus" style="color: #2e7d64;"></i> Active: <?php echo $active_count; ?></span>
+        <span class="stat-badge"><i class="fas fa-baby" style="color: #2e7d64;"></i> Active: <?php echo $active_count; ?></span>
         <span class="stat-badge"><i class="fas fa-exclamation-triangle" style="color: #c62828;"></i> Overdue ANC: <?php echo $overdue_count; ?></span>
         <span class="stat-badge"><i class="fas fa-birthday-cake" style="color: #e65100;"></i> Due ≤14d: <?php echo $delivering_soon_count; ?></span>
     </div>
@@ -770,7 +770,7 @@ require_once 'nav.php';
                                 </a>
                             <?php else: ?>
                                 <a href="register_patient.php?patient_id=<?php echo (int) $patient['id']; ?>" class="action-icon" title="Register a new pregnancy for this patient">
-                                    <i class="fas fa-person-pregnant"></i>
+                                    <i class="fas fa-baby"></i>
                                 </a>
                             <?php endif; ?>
                             <?php if (!empty($patient['phone'])): ?>

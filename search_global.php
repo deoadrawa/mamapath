@@ -741,7 +741,7 @@ require_once 'nav.php';
         <?php if (!empty($query)): ?>
             <div class="results-header">
                 <div class="results-count">
-                    <i class="fas fa-chart-simple"></i> Found <strong><?php echo number_format($total_results); ?></strong> result(s) for 
+                    <i class="fas fa-chart-column"></i> Found <strong><?php echo number_format($total_results); ?></strong> result(s) for 
                     "<strong><?php echo htmlspecialchars($query); ?></strong>"
                 </div>
                 <div class="results-filter-buttons">
@@ -787,7 +787,7 @@ require_once 'nav.php';
                                         <div class="result-detail"><i class="fas fa-hashtag"></i> Client: <?php echo htmlspecialchars($result['client_number']); ?></div>
                                     <?php endif; ?>
                                     <?php if (($result['pregnancy_status'] ?? '') == 'active' && !empty($result['edd'])): ?>
-                                        <div class="result-detail"><i class="fas fa-fetus"></i> EDD: <?php echo formatDate($result['edd']); ?></div>
+                                        <div class="result-detail"><i class="fas fa-baby"></i> EDD: <?php echo formatDate($result['edd']); ?></div>
                                     <?php endif; ?>
                                     
                                 <?php elseif ($result['type'] == 'anc'): ?>
