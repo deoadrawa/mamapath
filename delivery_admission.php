@@ -35,6 +35,13 @@ if (isset($_GET['episode_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
+        validateClinicalInput($_POST, [
+            'gestation_weeks' => ['Gestation (weeks)', 20, 45],
+            'baby_weight_kg' => ['Baby weight (kg)', 0.3, 7],
+            'apgar_1min' => ['Apgar (1 min)', 0, 10],
+            'apgar_5min' => ['Apgar (5 min)', 0, 10],
+            'muac_cm' => ['MUAC (cm)', 10, 50],
+        ]);
         $pdo->beginTransaction();
         
         $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
@@ -277,8 +284,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Update pregnancy episode status
-        $update = $pdo->prepare("UPDATE pregnancy_episodes SET status = 'delivered', closed_date = CURDATE() WHERE id = :id");
-        $update->execute([':id' => $episode_id]);
+        $update = $pdo->prepare("UPDATE pregnancy_episodes SET status = 'delivered', closed_date = :closed WHERE id = :id");
+        $update->execute([':id' => $episode_id, ':closed' => $deliveryDate->format('Y-m-d')]);
         
         logAction($pdo, $_SESSION['user_id'], 'CREATE_DELIVERY', 'delivery_records', $delivery_record_id, "Recorded delivery with IPD: $ipd_no");
         $pdo->commit();
@@ -709,7 +716,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <form method="POST" id="deliveryForm">
                 <?php echo csrfField(); ?>
-                <input type="hidden" name="episode_id" value="<?php echo $_GET['episode_id']; ?>">
+                <input type="hidden" name="episode_id" value="<?php echo (int) $_GET['episode_id']; ?>">
                 <input type="hidden" name="patient_id" value="<?php echo $patient_info['id']; ?>">
                 
                 <!-- Section 1: Admission Information -->
@@ -1116,4 +1123,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     });
 </script>
 
-<?php require_once 'footer.php'; ?>
+<?php require_once 'footer.php'; ?>

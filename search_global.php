@@ -15,6 +15,7 @@ $offset = ($page - 1) * $limit;
 
 $results = [];
 $total_results = 0;
+$max_category_total = 0;
 
 // Only search if there's a query
 if (strlen($query) >= 2) {
@@ -92,6 +93,7 @@ if (strlen($query) >= 2) {
             
             $results = array_merge($results, $patient_results);
             $total_results += $patient_total;
+            $max_category_total = max($max_category_total, (int) $patient_total);
         }
     }
     
@@ -155,6 +157,7 @@ if (strlen($query) >= 2) {
             $anc_results = $stmt->fetchAll();
             $results = array_merge($results, $anc_results);
             $total_results += $anc_total;
+            $max_category_total = max($max_category_total, (int) $anc_total);
         }
     }
     
@@ -215,6 +218,7 @@ if (strlen($query) >= 2) {
             $delivery_results = $stmt->fetchAll();
             $results = array_merge($results, $delivery_results);
             $total_results += $delivery_total;
+            $max_category_total = max($max_category_total, (int) $delivery_total);
         }
     }
     
@@ -276,11 +280,12 @@ if (strlen($query) >= 2) {
             $postnatal_results = $stmt->fetchAll();
             $results = array_merge($results, $postnatal_results);
             $total_results += $postnatal_total;
+            $max_category_total = max($max_category_total, (int) $postnatal_total);
         }
     }
 }
 
-$total_pages = max(1, ceil($total_results / $limit));
+$total_pages = max(1, (int) ceil(($search_type === 'all' ? $max_category_total : $total_results) / $limit));
 
 // Helper functions if not defined in config.php
 if (!function_exists('formatDate')) {

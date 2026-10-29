@@ -55,6 +55,20 @@ $client_number = generateClientNumber($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
+        validateClinicalInput($_POST, [
+            'age' => ['Age', 10, 60],
+            'gravida' => ['Gravida', 1, 30],
+            'parity' => ['Parity', 0, 30],
+            'weight_kg' => ['Weight (kg)', 25, 250],
+            'height_cm' => ['Height (cm)', 100, 220],
+            'muac_cm' => ['MUAC (cm)', 10, 50],
+            'bp_systolic' => ['Systolic BP', 50, 300],
+            'bp_diastolic' => ['Diastolic BP', 30, 200],
+            'partner_age' => ['Partner age', 12, 100],
+            'iron_folate_tablets' => ['Iron/folate tablets', 0, 1000],
+            'combined_fefan_tablets' => ['Combined Fefan tablets', 0, 1000],
+            'misoprostol_tablets' => ['Misoprostol tablets', 0, 100],
+        ]);
         $pdo->beginTransaction();
         $existingPatientValue = $_POST['existing_patient_id'] ?? '';
         $existingPatientId = $existingPatientValue === ''
@@ -779,7 +793,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="form-group">
                         <label>Iron/Folate Tablets</label>
-                        <input type="number" name="iron_folate_tablets" placeholder="Number of tablets">
+                        <input type="number" name="iron_folate_tablets" min="0" max="1000" placeholder="Number of tablets">
+                    </div>
+                    <div class="form-group">
+                        <label>Combined Fefan Tablets</label>
+                        <input type="number" name="combined_fefan_tablets" min="0" max="1000" placeholder="Number of tablets">
+                    </div>
+                    <div class="form-group">
+                        <label>Misoprostol Tablets</label>
+                        <input type="number" name="misoprostol_tablets" min="0" max="100" placeholder="From 34 weeks">
+                    </div>
+                    <div class="form-group">
+                        <label>Next Visit Date</label>
+                        <input type="date" name="next_visit_date">
                     </div>
                 </div>
             </div>

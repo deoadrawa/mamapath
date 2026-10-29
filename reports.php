@@ -43,12 +43,17 @@ if ($export_report === 'excel') {
     
     switch ($export_tab) {
         case 'executive_summary':
-            $total_patients = $pdo->query("SELECT COUNT(*) FROM patients")->fetchColumn();
+            $periodCount = function (string $sql) use ($pdo, $date_from, $date_to) {
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$date_from, $date_to]);
+                return $stmt->fetchColumn();
+            };
+            $total_patients = $periodCount("SELECT COUNT(*) FROM patients WHERE DATE(created_at) BETWEEN ? AND ?");
             $active = $pdo->query("SELECT COUNT(*) FROM pregnancy_episodes WHERE status = 'active'")->fetchColumn();
-            $anc_total = $pdo->query("SELECT COUNT(*) FROM anc_visits")->fetchColumn();
-            $deliveries = $pdo->query("SELECT COUNT(*) FROM delivery_records")->fetchColumn();
-            $pnc_total = $pdo->query("SELECT COUNT(*) FROM postnatal_visits")->fetchColumn();
-            $hiv = $pdo->query("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR','TRRK','TRR+')")->fetchColumn();
+            $anc_total = $periodCount("SELECT COUNT(*) FROM anc_visits WHERE visit_date BETWEEN ? AND ?");
+            $deliveries = $periodCount("SELECT COUNT(*) FROM delivery_records WHERE DATE(delivery_datetime) BETWEEN ? AND ?");
+            $pnc_total = $periodCount("SELECT COUNT(*) FROM postnatal_visits WHERE visit_date BETWEEN ? AND ?");
+            $hiv = $periodCount("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR','TRRK','TRR+') AND av.visit_date BETWEEN ? AND ?");
             $screenings = $pdo->prepare("SELECT COUNT(*) FROM screening_results WHERE performed_at BETWEEN ? AND ?");
             $screenings->execute([$date_from, $date_to]);
             $referrals = $pdo->prepare("SELECT COUNT(*) FROM referrals WHERE referral_date BETWEEN ? AND ?");
@@ -58,12 +63,12 @@ if ($export_report === 'excel') {
             $childVisits = $pdo->prepare("SELECT COUNT(*) FROM child_health_visits WHERE visit_date BETWEEN ? AND ?");
             $childVisits->execute([$date_from, $date_to]);
             echo "<tr><th>Metric</th><th>Value</th></tr>";
-            echo "<tr><td>Total Patients</td><td>" . $excelCell($total_patients) . "</td></tr>";
-            echo "<tr><td>Active Pregnancies</td><td>" . $excelCell($active) . "</td></tr>";
-            echo "<tr><td>Total ANC Visits</td><td>" . $excelCell($anc_total) . "</td></tr>";
-            echo "<tr><td>Total Deliveries</td><td>" . $excelCell($deliveries) . "</td></tr>";
-            echo "<tr><td>Total PNC Visits</td><td>" . $excelCell($pnc_total) . "</td></tr>";
-            echo "<tr><td>HIV Positive Mothers</td><td>" . $excelCell($hiv) . "</td></tr>";
+            echo "<tr><td>Patients Registered (Selected Period)</td><td>" . $excelCell($total_patients) . "</td></tr>";
+            echo "<tr><td>Active Pregnancies (Current Snapshot)</td><td>" . $excelCell($active) . "</td></tr>";
+            echo "<tr><td>ANC Visits (Selected Period)</td><td>" . $excelCell($anc_total) . "</td></tr>";
+            echo "<tr><td>Deliveries (Selected Period)</td><td>" . $excelCell($deliveries) . "</td></tr>";
+            echo "<tr><td>PNC Visits (Selected Period)</td><td>" . $excelCell($pnc_total) . "</td></tr>";
+            echo "<tr><td>HIV Positive Mothers Seen (Selected Period)</td><td>" . $excelCell($hiv) . "</td></tr>";
             echo "<tr><td>Screenings Recorded (Selected Period)</td><td>" . $excelCell($screenings->fetchColumn()) . "</td></tr>";
             echo "<tr><td>Referrals Initiated (Selected Period)</td><td>" . $excelCell($referrals->fetchColumn()) . "</td></tr>";
             echo "<tr><td>Referrals Completed (Selected Period)</td><td>" . $excelCell($referralsCompleted->fetchColumn()) . "</td></tr>";

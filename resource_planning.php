@@ -91,6 +91,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($balance + $quantity < 0) {
                 throw new InvalidArgumentException('This transaction would make the recorded stock balance negative on that date.');
             }
+            // A backdated entry must also keep every later running balance non-negative.
+            $laterStmt = $pdo->prepare(
+                'SELECT transaction_date, SUM(quantity_delta) AS delta
+                 FROM commodity_transactions
+                 WHERE commodity_id = :id AND transaction_date > :transaction_date
+                 GROUP BY transaction_date ORDER BY transaction_date'
+            );
+            $laterStmt->execute([':id' => $commodityId, ':transaction_date' => $date]);
+            $running = $balance + $quantity;
+            foreach ($laterStmt->fetchAll() as $later) {
+                $running += (float) $later['delta'];
+                if ($running < 0) {
+                    throw new InvalidArgumentException('This transaction would make the stock balance negative on ' . $later['transaction_date'] . '.');
+                }
+            }
             $stmt = $pdo->prepare(
                 'INSERT INTO commodity_transactions (
                     commodity_id, transaction_date, transaction_type, quantity_delta,

@@ -39,7 +39,7 @@ $row = $stmt->fetch();
 $stats['cs_rate'] = $row['total'] > 0 ? round(($row['cs'] / $row['total']) * 100) : 0;
 
 // HIV+ mothers on ART
-$stmt = $pdo->query("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR', 'TRRK', 'TRR+') AND av.emtct_risk = 'Low'");
+$stmt = $pdo->query("SELECT COUNT(DISTINCT pe.id) FROM anc_visits av JOIN pregnancy_episodes pe ON av.pregnancy_episode_id = pe.id WHERE av.woman_hiv_code IN ('TRR', 'TRRK', 'TRR+') ");
 $stats['hiv_on_art'] = $stmt->fetchColumn();
 
 // PNC 6-week rate - FIXED: Use proper subquery
@@ -310,7 +310,12 @@ $stmt = $pdo->query("SELECT
                              ELSE 'Normal Weight (≥2.5kg)'
                         END as category,
                         COUNT(*) as count
-                     FROM delivery_records 
+                     FROM (
+                        SELECT b.baby_weight_kg FROM babies b
+                        UNION ALL
+                        SELECT dr.baby_weight_kg FROM delivery_records dr
+                        WHERE NOT EXISTS (SELECT 1 FROM babies b2 WHERE b2.delivery_record_id = dr.id)
+                     ) w
                      WHERE baby_weight_kg IS NOT NULL
                      GROUP BY category");
 $lbw_data = $stmt->fetchAll();
@@ -567,7 +572,7 @@ if (!function_exists('formatDate')) {
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-clock"></i></div><div class="stat-tile-value"><?php echo $stats['early_booking_rate']; ?>%</div><div class="stat-tile-label">Early Booking</div></div>
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-baby"></i></div><div class="stat-tile-value"><?php echo $stats['deliveries_month']; ?></div><div class="stat-tile-label">Deliveries (Month)</div></div>
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-chart-line"></i></div><div class="stat-tile-value"><?php echo $stats['cs_rate']; ?>%</div><div class="stat-tile-label">C-Section</div></div>
-    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-heartbeat"></i></div><div class="stat-tile-value"><?php echo $stats['hiv_on_art']; ?></div><div class="stat-tile-label">HIV+ on ART</div></div>
+    <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-heartbeat"></i></div><div class="stat-tile-value"><?php echo $stats['hiv_on_art']; ?></div><div class="stat-tile-label">HIV+ Mothers</div></div>
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-child"></i></div><div class="stat-tile-value"><?php echo $stats['pnc_6week_rate']; ?>%</div><div class="stat-tile-label">PNC 6-Week</div></div>
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-chart-simple"></i></div><div class="stat-tile-value"><?php echo $stats['avg_anc_visits']; ?></div><div class="stat-tile-label">Avg ANC Visits</div></div>
     <div class="stat-tile"><div class="stat-tile-icon"><i class="fas fa-exclamation-triangle"></i></div><div class="stat-tile-value"><?php echo $stats['stillbirth_rate']; ?>%</div><div class="stat-tile-label">Stillbirth</div></div>
@@ -898,4 +903,4 @@ createClinicalChart('emtctRiskChart', {
 });
 </script>
 
-<?php require_once 'footer.php'; ?>
+<?php require_once 'footer.php'; ?>

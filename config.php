@@ -114,6 +114,40 @@ function emptyToNull($value)
     return $value;
 }
 
+function validateClinicalInput(array $input, array $rules): void
+{
+    foreach ($rules as $field => [$label, $min, $max]) {
+        $raw = $input[$field] ?? '';
+        if (is_array($raw) || trim((string) $raw) === '') {
+            continue;
+        }
+        if (!is_numeric($raw)) {
+            throw new InvalidArgumentException($label . ' must be a number.');
+        }
+        $value = (float) $raw;
+        if ($value < $min || $value > $max) {
+            throw new InvalidArgumentException(sprintf('%s must be between %s and %s.', $label, $min, $max));
+        }
+    }
+    if (
+        !empty($input['bp_systolic']) && !empty($input['bp_diastolic'])
+        && (float) $input['bp_diastolic'] >= (float) $input['bp_systolic']
+    ) {
+        throw new InvalidArgumentException('Diastolic blood pressure must be lower than systolic.');
+    }
+    $visit = $input['visit_date'] ?? '';
+    $next = $input['next_visit_date'] ?? '';
+    if ($visit !== '' && $next !== '' && $next < $visit) {
+        throw new InvalidArgumentException('The next visit date cannot be before the visit date.');
+    }
+    foreach (['syphilis_result' => ['NR', 'Rx', '+Ve'], 'hepatitis_b_result' => ['NR', '+Ve']] as $field => $allowed) {
+        $value = $input[$field] ?? '';
+        if ($value !== '' && !in_array($value, $allowed, true)) {
+            throw new InvalidArgumentException('Choose a valid ' . str_replace('_', ' ', $field) . '.');
+        }
+    }
+}
+
 function formBoolean(array $formData, string $key): int
 {
     $value = $formData[$key] ?? null;
@@ -374,8 +408,28 @@ function classifyBirthWeight($weight): string
     return 'Macrosomia (>4kg)';
 }
 
+function acquireSerialLock(PDO $pdo, string $name): void
+{
+    $stmt = $pdo->prepare('SELECT GET_LOCK(:name, 10)');
+    $stmt->execute([':name' => 'mamacare_' . $name]);
+    if ((int) $stmt->fetchColumn() !== 1) {
+        throw new RuntimeException('The system is busy generating register numbers. Please try again.');
+    }
+    static $registered = [];
+    if (!isset($registered[$name])) {
+        $registered[$name] = true;
+        register_shutdown_function(static function () use ($pdo, $name): void {
+            try {
+                $pdo->query("SELECT RELEASE_LOCK('mamacare_" . $name . "')");
+            } catch (Throwable $e) {
+            }
+        });
+    }
+}
+
 function generateClientNumber(PDO $pdo): string
 {
+    acquireSerialLock($pdo, 'client_number');
     $year = date('Y');
     $stmt = $pdo->prepare(
         "SELECT MAX(CAST(SUBSTRING_INDEX(client_number, '/', 1) AS UNSIGNED)) AS max_num
@@ -389,6 +443,7 @@ function generateClientNumber(PDO $pdo): string
 
 function generateIPDNumber(PDO $pdo): string
 {
+    acquireSerialLock($pdo, 'ipd_number');
     $year = date('Y');
     $stmt = $pdo->prepare(
         "SELECT MAX(CAST(SUBSTRING_INDEX(ipd_no, '/', -1) AS UNSIGNED)) AS max_num
@@ -410,6 +465,7 @@ function getNextSerialNo(PDO $pdo, string $table, string $dateColumn): int
     if (!isset($allowed[$table]) || $allowed[$table] !== $dateColumn) {
         throw new InvalidArgumentException('Invalid register table.');
     }
+    acquireSerialLock($pdo, 'serial_' . $table);
 
     $stmt = $pdo->prepare(
         "SELECT MAX(serial_no) AS max_serial

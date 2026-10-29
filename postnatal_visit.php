@@ -39,6 +39,12 @@ if ($selected_episode_id !== false && $selected_episode_id !== null && $selected
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
+        validateClinicalInput($_POST, [
+            'mother_weight_kg' => ['Mother weight (kg)', 25, 250],
+            'mother_muac_cm' => ['Mother MUAC (cm)', 10, 50],
+            'baby_age_days' => ['Baby age (days)', 0, 365],
+            'baby_weight_kg' => ['Baby weight (kg)', 0.3, 7],
+        ]);
         $pdo->beginTransaction();
         $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
         $episodeStmt = $pdo->prepare(
@@ -634,6 +640,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label>Partner eMTCT Code</label>
                         <input type="text" name="partner_emtct_code" placeholder="e.g., TR, TRR">
+                    </div>
+                    <div class="form-group">
+                        <label>Partner TFV Code</label>
+                        <input type="text" name="partner_tfv_code" maxlength="10" placeholder="Test for Verification">
                     </div>
                     <div class="form-group">
                         <label>Mother ART Code</label>

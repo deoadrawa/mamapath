@@ -42,6 +42,18 @@ if (isset($_GET['episode_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         requireCSRF();
+        validateClinicalInput($_POST, [
+            'weight_kg' => ['Weight (kg)', 25, 250],
+            'height_cm' => ['Height (cm)', 100, 220],
+            'muac_cm' => ['MUAC (cm)', 10, 50],
+            'bp_systolic' => ['Systolic BP', 50, 300],
+            'bp_diastolic' => ['Diastolic BP', 30, 200],
+            'partner_age' => ['Partner age', 12, 100],
+            'cd4_value' => ['CD4 value', 0, 5000],
+            'iron_folate_tablets' => ['Iron/folate tablets', 0, 1000],
+            'combined_fefan_tablets' => ['Combined Fefan tablets', 0, 1000],
+            'misoprostol_tablets' => ['Misoprostol tablets', 0, 100],
+        ]);
         $pdo->beginTransaction();
         $episode_id = filter_var($_POST['episode_id'] ?? null, FILTER_VALIDATE_INT);
         $visit_date = $_POST['visit_date'] ?? '';
@@ -74,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new InvalidArgumentException('The ANC visit date cannot be before the recorded LMP.');
         }
         $ga = calculateGestationalAge($lmp, $visit_date);
+        acquireSerialLock($pdo, 'anc_visit_' . $episode_id);
         $visitStmt = $pdo->prepare('SELECT COALESCE(MAX(visit_number), 0) + 1 FROM anc_visits WHERE pregnancy_episode_id = :id');
         $visitStmt->execute([':id' => $episode_id]);
         $visit_number = (int) $visitStmt->fetchColumn();
@@ -560,7 +573,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <form method="POST">
                 <?php echo csrfField(); ?>
-                <input type="hidden" name="episode_id" value="<?php echo $_GET['episode_id']; ?>">
+                <input type="hidden" name="episode_id" value="<?php echo (int) $_GET['episode_id']; ?>">
                 <input type="hidden" name="patient_id" value="<?php echo $patient_info['id']; ?>">
                 <input type="hidden" name="visit_number" value="<?php echo $next_visit_number; ?>">
                 
@@ -673,6 +686,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <option value="1">Yes</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Partner ART Place</label>
+                            <input type="text" name="partner_art_place" maxlength="255" placeholder="Facility where partner receives ART">
+                        </div>
+                        <div class="form-group">
+                            <label>Partner ART Number</label>
+                            <input type="text" name="partner_art_number" maxlength="50" placeholder="ART number">
+                        </div>
                     </div>
                 </div>
                 
@@ -767,6 +788,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="form-group">
                             <label>Iron/Folate Tablets</label>
                             <input type="number" name="iron_folate_tablets" placeholder="Number of tablets">
+                        </div>
+                        <div class="form-group">
+                            <label>Syphilis Result</label>
+                            <select name="syphilis_result">
+                                <option value="">-- Select --</option>
+                                <option value="NR">NR - Non-reactive</option>
+                                <option value="Rx">Rx - Reactive (treated)</option>
+                                <option value="+Ve">+Ve - Positive</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Hepatitis B Result</label>
+                            <select name="hepatitis_b_result">
+                                <option value="">-- Select --</option>
+                                <option value="NR">NR - Non-reactive</option>
+                                <option value="+Ve">+Ve - Positive</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Combined Fefan Tablets</label>
